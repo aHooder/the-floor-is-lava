@@ -26,6 +26,11 @@
  */
 package com.github.ahooder.the_floor_is_lava;
 
+import static com.github.ahooder.the_floor_is_lava.gpu.GpuPlugin.MAX_DISTANCE;
+import static com.github.ahooder.the_floor_is_lava.gpu.GpuPlugin.MAX_FOG_DEPTH;
+import com.github.ahooder.the_floor_is_lava.gpu.config.AntiAliasingMode;
+import com.github.ahooder.the_floor_is_lava.gpu.config.ColorBlindMode;
+import com.github.ahooder.the_floor_is_lava.gpu.config.UIScalingMode;
 import java.awt.Color;
 import net.runelite.client.config.Alpha;
 import net.runelite.client.config.ConfigGroup;
@@ -33,9 +38,11 @@ import net.runelite.client.config.ConfigItem;
 import net.runelite.client.config.ConfigSection;
 import net.runelite.client.config.Range;
 
-@ConfigGroup(Plugin.CONFIG_GROUP)
+@ConfigGroup(Config.GROUP)
 public interface Config extends net.runelite.client.config.Config
 {
+	String GROUP = "theFloorIsLava";
+
 	@ConfigSection(
 		name = "Game Mode",
 		description = "Select your TheFloorIsLava game mode'",
@@ -53,10 +60,17 @@ public interface Config extends net.runelite.client.config.Config
 	@ConfigSection(
 		name = "Custom Game Mode",
 		description = "Create a custom TheFloorIsLava game mode. Be sure to 'Enable Custom Game Mode'",
-		position = 99,
+		position = 3,
 		closedByDefault = true
 	)
 	String customGameModeSection = "customGameMode";
+
+	@ConfigSection(
+		name = "GPU Settings",
+		description = "Create a custom TheFloorIsLava game mode. Be sure to 'Enable Custom Game Mode'",
+		position = 4
+	)
+	String gpuSettingsSection = "gpuSettings";
 
 	enum GameMode
 	{
@@ -231,5 +245,171 @@ public interface Config extends net.runelite.client.config.Config
 	default int expPerTile()
 	{
 		return 1000;
+	}
+
+	@Range(
+		max = MAX_DISTANCE
+	)
+	@ConfigItem(
+		section = gpuSettingsSection,
+		keyName = "drawDistance",
+		name = "Draw Distance",
+		description = "Draw distance",
+		position = 1
+	)
+	default int drawDistance()
+	{
+		return 25;
+	}
+
+	@ConfigItem(
+		section = gpuSettingsSection,
+		keyName = "smoothBanding",
+		name = "Remove Color Banding",
+		description = "Smooths out the color banding that is present in the CPU renderer",
+		position = 2
+	)
+	default boolean smoothBanding()
+	{
+		return false;
+	}
+
+	@ConfigItem(
+		section = gpuSettingsSection,
+		keyName = "antiAliasingMode",
+		name = "Anti Aliasing",
+		description = "Configures the anti-aliasing mode",
+		position = 3
+	)
+	default AntiAliasingMode antiAliasingMode()
+	{
+		return AntiAliasingMode.DISABLED;
+	}
+
+	@ConfigItem(
+		section = gpuSettingsSection,
+		keyName = "uiScalingMode",
+		name = "UI scaling mode",
+		description = "Sampling function to use for the UI in stretched mode",
+		position = 4
+	)
+	default UIScalingMode uiScalingMode()
+	{
+		return UIScalingMode.LINEAR;
+	}
+
+	@Range(
+		max = MAX_FOG_DEPTH
+	)
+	@ConfigItem(
+		section = gpuSettingsSection,
+		keyName = "fogDepth",
+		name = "Fog depth",
+		description = "Distance from the scene edge the fog starts",
+		position = 5
+	)
+	default int fogDepth()
+	{
+		return 0;
+	}
+
+	@ConfigItem(
+		section = gpuSettingsSection,
+		keyName = "useComputeShaders",
+		name = "Compute Shaders",
+		description = "Offloads face sorting to GPU, enabling extended draw distance. Requires plugin restart.",
+		warning = "This feature requires OpenGL 4.3 to use. Please check that your GPU supports this.\nRestart the plugin for changes to take effect.",
+		position = 6
+	)
+	default boolean useComputeShaders()
+	{
+		return true;
+	}
+
+	@Range(
+		min = 0,
+		max = 16
+	)
+	@ConfigItem(
+		section = gpuSettingsSection,
+		keyName = "anisotropicFilteringLevel",
+		name = "Anisotropic Filtering",
+		description = "Configures the anisotropic filtering level.",
+		position = 7
+	)
+	default int anisotropicFilteringLevel()
+	{
+		return 0;
+	}
+
+	@ConfigItem(
+		section = gpuSettingsSection,
+		keyName = "colorBlindMode",
+		name = "Colorblindness Correction",
+		description = "Adjusts colors to account for colorblindness",
+		position = 8
+	)
+	default ColorBlindMode colorBlindMode()
+	{
+		return ColorBlindMode.NONE;
+	}
+
+	@ConfigItem(
+		section = gpuSettingsSection,
+		keyName = "brightTextures",
+		name = "Bright Textures",
+		description = "Use old texture lighting method which results in brighter game textures",
+		position = 9
+	)
+	default boolean brightTextures()
+	{
+		return false;
+	}
+
+	@ConfigItem(
+		section = gpuSettingsSection,
+		keyName = "unlockFps",
+		name = "Unlock FPS",
+		description = "Removes the 50 FPS cap for camera movement",
+		position = 10
+	)
+	default boolean unlockFps()
+	{
+		return false;
+	}
+
+	enum SyncMode
+	{
+		OFF,
+		ON,
+		ADAPTIVE
+	}
+
+	@ConfigItem(
+		section = gpuSettingsSection,
+		keyName = "vsyncMode",
+		name = "Vsync Mode",
+		description = "Method to synchronize frame rate with refresh rate",
+		position = 11
+	)
+	default SyncMode syncMode()
+	{
+		return SyncMode.ADAPTIVE;
+	}
+
+	@ConfigItem(
+		section = gpuSettingsSection,
+		keyName = "fpsTarget",
+		name = "FPS Target",
+		description = "Target FPS when unlock FPS is enabled and Vsync mode is OFF",
+		position = 12
+	)
+	@Range(
+		min = 1,
+		max = 999
+	)
+	default int fpsTarget()
+	{
+		return 60;
 	}
 }

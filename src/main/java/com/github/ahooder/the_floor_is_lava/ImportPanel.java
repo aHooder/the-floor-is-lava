@@ -16,7 +16,7 @@ import net.runelite.client.ui.PluginPanel;
 @Singleton
 public class ImportPanel extends PluginPanel
 {
-	public ImportPanel(Plugin plugin)
+	public ImportPanel(LavaPlugin lavaPlugin)
 	{
 		setLayout(new BorderLayout());
 		setBorder(new EmptyBorder(10, 10, 10, 10));
@@ -46,7 +46,7 @@ public class ImportPanel extends PluginPanel
 		centerPanel.setBackground(ColorScheme.DARK_GRAY_COLOR);
 		JButton importButton = new JButton("Import");
 		centerPanel.add(importButton, BorderLayout.SOUTH);
-		importButton.addActionListener(l -> plugin.importGroundMarkerTiles());
+		importButton.addActionListener(l -> lavaPlugin.importGroundMarkerTiles());
 
 		importButton.setToolTipText("Import Ground Markers");
 

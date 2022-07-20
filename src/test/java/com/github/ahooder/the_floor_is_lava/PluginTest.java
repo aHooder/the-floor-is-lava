@@ -6,7 +6,7 @@ import net.runelite.client.externalplugins.ExternalPluginManager;
 public class PluginTest {
 	@SuppressWarnings("unchecked")
 	public static void main(String[] args) throws Exception {
-		ExternalPluginManager.loadBuiltin(Plugin.class);
+		ExternalPluginManager.loadBuiltin(LavaPlugin.class);
 		RuneLite.main(args);
 	}
 }

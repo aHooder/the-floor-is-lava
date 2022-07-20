@@ -26,9 +26,8 @@
  */
 package com.github.ahooder.the_floor_is_lava;
 
-import com.github.ahooder.the_floor_is_lava.overlays.GameOverlay;
+import com.github.ahooder.the_floor_is_lava.gpu.GpuPlugin;
 import com.github.ahooder.the_floor_is_lava.overlays.MinimapOverlay;
-import com.github.ahooder.the_floor_is_lava.overlays.TileInfoOverlay;
 import com.google.common.base.Strings;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
@@ -42,6 +41,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
+import javax.swing.SwingUtilities;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
@@ -60,10 +60,15 @@ import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GameTick;
 import net.runelite.api.events.MenuEntryAdded;
 import net.runelite.api.events.MenuOptionClicked;
+import net.runelite.client.callback.ClientThread;
 import net.runelite.client.config.ConfigManager;
+import net.runelite.client.eventbus.EventBus;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.events.ConfigChanged;
+import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
+import net.runelite.client.plugins.PluginInstantiationException;
+import net.runelite.client.plugins.PluginManager;
 import net.runelite.client.ui.ClientToolbar;
 import net.runelite.client.ui.NavigationButton;
 import net.runelite.client.ui.overlay.OverlayManager;
@@ -74,11 +79,12 @@ import net.runelite.client.util.ImageUtil;
 @PluginDescriptor(
 	name = "The Floor is Lava",
 	description = "Automatically place lava tiles where you walk",
-	tags = {"lava", "tiles"}
+	tags = {"lava", "tiles", "gpu"},
+	loadInSafeMode = false,
+	conflicts = "GPU"
 )
-public class Plugin extends net.runelite.client.plugins.Plugin
+public class LavaPlugin extends Plugin
 {
-	public static final String CONFIG_GROUP = "theFloorIsLava";
 	private static final String MARK = "Place lava tile";
 	private static final String UNMARK = "Clear lava tile";
 	private static final String WALK_HERE = "Walk here";
@@ -93,7 +99,16 @@ public class Plugin extends net.runelite.client.plugins.Plugin
 	private Client client;
 
 	@Inject
-	private ConfigEvaluator config;
+	private ClientThread clientThread;
+
+	@Inject
+	private ClientToolbar clientToolbar;
+
+	@Inject
+	private EventBus eventBus;
+
+	@Inject
+	private PluginManager pluginManager;
 
 	@Inject
 	private ConfigManager configManager;
@@ -102,19 +117,19 @@ public class Plugin extends net.runelite.client.plugins.Plugin
 	private OverlayManager overlayManager;
 
 	@Inject
-	private GameOverlay overlay;
-
-	@Inject
 	private MinimapOverlay minimapOverlay;
 
 	@Inject
 	private WorldMapOverlay worldMapOverlay;
 
 	@Inject
-	private TileInfoOverlay infoOverlay;
+	private ConfigEvaluator config;
 
 	@Inject
-	private ClientToolbar clientToolbar;
+	private LavaPlacer lavaPlacer;
+
+	@Inject
+	private GpuPlugin gpuPlugin;
 
 	@Provides
 	Config provideConfig(ConfigManager configManager)
@@ -240,38 +255,74 @@ public class Plugin extends net.runelite.client.plugins.Plugin
 	@Override
 	protected void startUp()
 	{
-		tutorialIslandRegionIds.add(12079);
-		tutorialIslandRegionIds.add(12080);
-		tutorialIslandRegionIds.add(12335);
-		tutorialIslandRegionIds.add(12336);
-		tutorialIslandRegionIds.add(12592);
-		overlayManager.add(overlay);
-		overlayManager.add(minimapOverlay);
-		overlayManager.add(worldMapOverlay);
-		overlayManager.add(infoOverlay);
-		loadPoints();
-		updateTileCounter();
-		log.debug("startup");
-		ImportPanel panel = new ImportPanel(this);
-		NavigationButton navButton = NavigationButton.builder()
-			.tooltip("TheFloorIsLava Import")
-			.icon(ImageUtil.getResourceStreamFromClass(getClass(), "/icon.png"))
-			.priority(70)
-			.panel(panel)
-			.build();
+		clientThread.invoke(() -> {
+			try
+			{
+				if (!gpuPlugin.initialize())
+					return false;
 
-		clientToolbar.addNavigation(navButton);
+				eventBus.register(gpuPlugin);
+
+				tutorialIslandRegionIds.add(12079);
+				tutorialIslandRegionIds.add(12080);
+				tutorialIslandRegionIds.add(12335);
+				tutorialIslandRegionIds.add(12336);
+				tutorialIslandRegionIds.add(12592);
+				overlayManager.add(minimapOverlay);
+				overlayManager.add(worldMapOverlay);
+				loadPoints();
+				updateTileCounter();
+				log.debug("startup");
+
+				SwingUtilities.invokeLater(() -> {
+					ImportPanel panel = new ImportPanel(this);
+					NavigationButton navButton = NavigationButton.builder()
+						.tooltip("TheFloorIsLava Import")
+						.icon(ImageUtil.getResourceStreamFromClass(getClass(), "/icon.png"))
+						.priority(70)
+						.panel(panel)
+						.build();
+
+					clientToolbar.addNavigation(navButton);
+				});
+			}
+			catch (Throwable e)
+			{
+				log.error("Error starting GPU plugin", e);
+
+				SwingUtilities.invokeLater(() ->
+				{
+					try
+					{
+						pluginManager.setPluginEnabled(this, false);
+						pluginManager.stopPlugin(this);
+					}
+					catch (PluginInstantiationException ex)
+					{
+						log.error("error stopping plugin", ex);
+					}
+				});
+
+				gpuPlugin.destroy();
+			}
+
+			return true;
+		});
 	}
 
 	@Override
 	protected void shutDown()
 	{
-		tutorialIslandRegionIds.clear();
-		overlayManager.remove(overlay);
-		overlayManager.remove(minimapOverlay);
-		overlayManager.remove(worldMapOverlay);
-		overlayManager.remove(infoOverlay);
-		points.clear();
+		clientThread.invoke(() -> {
+			eventBus.unregister(gpuPlugin);
+			gpuPlugin.destroy();
+
+			tutorialIslandRegionIds.clear();
+			overlayManager.remove(minimapOverlay);
+			overlayManager.remove(worldMapOverlay);
+			points.clear();
+			lavaPlacer.update();
+		});
 	}
 
 	private void autoMark()
@@ -317,7 +368,7 @@ public class Plugin extends net.runelite.client.plugins.Plugin
 		// If none, Exit function
 
 		// Get and store array list of existing TheFloorIsLava World Regions (like updateTileCounter does)
-		List<String> theFloorIsLavaModeRegions = getAllRegionIds(CONFIG_GROUP);
+		List<String> theFloorIsLavaModeRegions = getAllRegionIds(Config.GROUP);
 
 		// CONVERSION
 		// Loop through Ground Marker Regions
@@ -386,17 +437,17 @@ public class Plugin extends net.runelite.client.plugins.Plugin
 
 	public Collection<LavaTile> getTiles(int regionId)
 	{
-		return getConfiguration(CONFIG_GROUP, REGION_PREFIX + regionId);
+		return getConfiguration(Config.GROUP, REGION_PREFIX + regionId);
 	}
 
 	public Collection<LavaTile> getTiles(String regionId)
 	{
-		return getConfiguration(CONFIG_GROUP, REGION_PREFIX + regionId);
+		return getConfiguration(Config.GROUP, REGION_PREFIX + regionId);
 	}
 
 	private void updateTileCounter()
 	{
-		List<String> regions = configManager.getConfigurationKeys(CONFIG_GROUP + ".region");
+		List<String> regions = configManager.getConfigurationKeys(Config.GROUP + ".region");
 		int totalTiles = 0;
 		for (String region : regions)
 		{
@@ -475,18 +526,19 @@ public class Plugin extends net.runelite.client.plugins.Plugin
 			points.addAll(worldPoint);
 		}
 		updateTileCounter();
+		lavaPlacer.update();
 	}
 
 	private void savePoints(int regionId, Collection<LavaTile> points)
 	{
 		if (points == null || points.isEmpty())
 		{
-			configManager.unsetConfiguration(CONFIG_GROUP, REGION_PREFIX + regionId);
+			configManager.unsetConfiguration(Config.GROUP, REGION_PREFIX + regionId);
 			return;
 		}
 
 		String json = GSON.toJson(points);
-		configManager.setConfiguration(CONFIG_GROUP, REGION_PREFIX + regionId, json);
+		configManager.setConfiguration(Config.GROUP, REGION_PREFIX + regionId, json);
 	}
 
 	private Collection<WorldPoint> translateToWorldPoint(Collection<LavaTile> points)
@@ -514,6 +566,15 @@ public class Plugin extends net.runelite.client.plugins.Plugin
 	public int getRemainingTiles()
 	{
 		return remainingTiles;
+	}
+
+	public boolean containsTile(int plane, int tileX, int tileY) {
+		for (final WorldPoint wp : getPoints()) {
+			LocalPoint p = LocalPoint.fromWorld(client, wp);
+			if (wp.getPlane() == plane && p.getSceneX() == tileX && p.getSceneY() == tileY)
+				return true;
+		}
+		return false;
 	}
 
 	private void handleMenuOption(LocalPoint selectedPoint, boolean markedValue)

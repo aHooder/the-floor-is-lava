@@ -29,7 +29,7 @@ package com.github.ahooder.the_floor_is_lava.overlays;
 
 import com.github.ahooder.the_floor_is_lava.Config;
 import com.github.ahooder.the_floor_is_lava.LavaTile;
-import com.github.ahooder.the_floor_is_lava.Plugin;
+import com.github.ahooder.the_floor_is_lava.LavaPlugin;
 import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.Graphics2D;
@@ -53,14 +53,14 @@ class WorldMapOverlay extends Overlay
 
 	private final Client client;
 	private final Config config;
-	private final Plugin plugin;
+	private final LavaPlugin lavaPlugin;
 
 	@Inject
-	private WorldMapOverlay(Client client, Config config, Plugin plugin)
+	private WorldMapOverlay(Client client, Config config, LavaPlugin lavaPlugin)
 	{
 		this.client = client;
 		this.config = config;
-		this.plugin = plugin;
+		this.lavaPlugin = lavaPlugin;
 		setPosition(OverlayPosition.DYNAMIC);
 		setPriority(OverlayPriority.HIGH);
 		setLayer(OverlayLayer.ALWAYS_ON_TOP);
@@ -110,7 +110,7 @@ class WorldMapOverlay extends Overlay
 			for (int y = yRegionMin; y < yRegionMax; y += REGION_SIZE)
 			{
 				int regionId = ((x >> 6) << 8) | (y >> 6);
-				for (final LavaTile tile : plugin.getTiles(regionId))
+				for (final LavaTile tile : lavaPlugin.getTiles(regionId))
 				{
 					if (tile.getZ() != client.getPlane())
 					{

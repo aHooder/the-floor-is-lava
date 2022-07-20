@@ -37,7 +37,7 @@ tasks.withType(JavaCompile) {
 //	from sourceSets.main.output
 //	configurations = [project.configurations.runtimeClasspath]
 //	manifest {
-//		attributes 'Main-Class': 'com.github.ahooder.the_floor_is_lava.Plugin'
+//		attributes 'Main-Class': 'com.github.ahooder.the_floor_is_lava.LavaPlugin'
 //	}
 //}
 

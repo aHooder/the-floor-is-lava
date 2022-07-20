@@ -26,7 +26,7 @@
 package com.github.ahooder.the_floor_is_lava.overlays;
 
 import com.github.ahooder.the_floor_is_lava.Config;
-import com.github.ahooder.the_floor_is_lava.Plugin;
+import com.github.ahooder.the_floor_is_lava.LavaPlugin;
 import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.Graphics2D;
@@ -51,14 +51,14 @@ public class MinimapOverlay extends Overlay
 
 	private final Client client;
 	private final Config config;
-	private final Plugin plugin;
+	private final LavaPlugin lavaPlugin;
 
 	@Inject
-	private MinimapOverlay(Client client, Config config, Plugin plugin)
+	private MinimapOverlay(Client client, Config config, LavaPlugin lavaPlugin)
 	{
 		this.client = client;
 		this.config = config;
-		this.plugin = plugin;
+		this.lavaPlugin = lavaPlugin;
 		setPosition(OverlayPosition.DYNAMIC);
 		setPriority(OverlayPriority.LOW);
 		setLayer(OverlayLayer.ABOVE_WIDGETS);
@@ -72,7 +72,7 @@ public class MinimapOverlay extends Overlay
 			return null;
 		}
 
-		final Collection<WorldPoint> points = plugin.getPoints();
+		final Collection<WorldPoint> points = lavaPlugin.getPoints();
 		for (final WorldPoint point : points)
 		{
 			WorldPoint worldPoint = point;
@@ -113,17 +113,6 @@ public class MinimapOverlay extends Overlay
 
 	private Color getTileColor()
 	{
-		if (config.enableTileWarnings())
-		{
-			if (plugin.getRemainingTiles() <= 0)
-			{
-				return Color.RED;
-			}
-			else if (plugin.getRemainingTiles() <= config.warningLimit())
-			{
-				return new Color(255, 153, 0);
-			}
-		}
-		return config.markerColor();
+		return new Color(255, 50, 50);
 	}
 }
