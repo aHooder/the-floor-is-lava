@@ -25,7 +25,6 @@
 package com.github.ahooder.the_floor_is_lava.gpu;
 
 import com.github.ahooder.the_floor_is_lava.Config;
-import com.github.ahooder.the_floor_is_lava.LavaPlacer;
 import com.github.ahooder.the_floor_is_lava.LavaPlugin;
 import com.github.ahooder.the_floor_is_lava.gpu.config.AntiAliasingMode;
 import com.github.ahooder.the_floor_is_lava.gpu.config.UIScalingMode;
@@ -44,11 +43,10 @@ import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 import javax.annotation.Nonnull;
 import javax.inject.Inject;
-import javax.swing.SwingUtilities;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.BufferProvider;
 import net.runelite.api.Client;
-import net.runelite.api.Constants;
+import net.runelite.api.DynamicObject;
 import net.runelite.api.GameState;
 import net.runelite.api.JagexColor;
 import net.runelite.api.Model;
@@ -65,8 +63,6 @@ import net.runelite.client.callback.ClientThread;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.events.ConfigChanged;
 import net.runelite.client.plugins.Plugin;
-import net.runelite.client.plugins.PluginInstantiationException;
-import net.runelite.client.plugins.PluginManager;
 import net.runelite.client.ui.DrawManager;
 import net.runelite.client.util.OSType;
 import net.runelite.rlawt.AWTContext;
@@ -911,7 +907,7 @@ public class GpuPlugin extends Plugin implements DrawCallbacks
 		int textureId = 31; // Lava texture
 		float textureMetadata = Float.intBitsToFloat(1);
 
-		int depth = 32;
+		int depth = 64;
 		int lavaHue = 0;
 		int lavaSaturation = 7;
 		int topColor = JagexColor.packHSL(lavaHue, lavaSaturation, 0);
@@ -925,16 +921,19 @@ public class GpuPlugin extends Plugin implements DrawCallbacks
 
 		int swtop = tileHeights[plane][tileX][tileY];
 		int setop = tileHeights[plane][tileX + 1][tileY];
-		int netop = tileHeights[plane][tileX + 1][tileY + 1];
 		int nwtop = tileHeights[plane][tileX][tileY + 1];
+		int netop = tileHeights[plane][tileX + 1][tileY + 1];
+
+		int lavaHeight = depth;
+		if (plane > 0)
+			lavaHeight = Math.max(Math.max(swtop, setop), Math.max(nwtop, netop)) + 32;
 
 		// Bottom face height
-		int bottom = Math.max(Math.max(swtop, setop), Math.max(nwtop, netop)) + depth;
-		swtop -= bottom;
-		setop -= bottom;
-		netop -= bottom;
-		nwtop -= bottom;
 		int nwbot = 0, nebot = 0, swbot = 0, sebot = 0;
+		nwtop -= lavaHeight;
+		netop -= lavaHeight;
+		swtop -= lavaHeight;
+		setop -= lavaHeight;
 
 		// Bottom face corners
 		int swx = 0;
@@ -963,6 +962,8 @@ public class GpuPlugin extends Plugin implements DrawCallbacks
 		uvBuffer.put(tex, 0.0f, 0.0f, textureMetadata);
 		uvBuffer.put(tex, 1.0f, 0.0f, textureMetadata);
 		uvBuffer.put(tex, 0.0f, 1.0f, textureMetadata);
+
+		// TODO: fix correct back to front ordering when compute shaders are disabled
 
 		// Add western wall
 		if (!lavaPlugin.containsTile(plane, tileX - 1, tileY)) {
@@ -1020,15 +1021,17 @@ public class GpuPlugin extends Plugin implements DrawCallbacks
 			GpuIntBuffer b = modelBufferSmall;
 			++smallModels;
 
+			int maxHeight = Math.min(Math.min(swtop, setop), Math.min(nwtop, netop));
+			int radius = (int) Math.sqrt(maxHeight * maxHeight + 32768);
+
 			b.ensureCapacity(8);
-			int radius = 225;
 			IntBuffer buffer = b.getBuffer();
 			buffer.put(tempOffset);
 			buffer.put(tempUvOffset);
 			buffer.put(faceCount);
 			buffer.put(targetBufferOffset);
 			buffer.put(radius << 12);
-			buffer.put(localX).put(bottom).put(localY);
+			buffer.put(localX).put(lavaHeight).put(localY);
 
 			tempOffset += faceCount * 3;
 			tempUvOffset += faceCount * 3;
@@ -1601,11 +1604,25 @@ public class GpuPlugin extends Plugin implements DrawCallbacks
 	@Override
 	public void draw(Renderable renderable, int orientation, int pitchSin, int pitchCos, int yawSin, int yawCos, int x, int y, int z, long hash)
 	{
+		Model model = renderable instanceof Model ? (Model) renderable : renderable.getModel();
+		if (model == null)
+			return;
+
+		modelX = x + client.getCameraX2();
+		modelY = y + client.getCameraY2();
+		modelZ = z + client.getCameraZ2();
+
+		int tileX = modelX / Perspective.LOCAL_TILE_SIZE;
+		int tileY = modelZ / Perspective.LOCAL_TILE_SIZE;
+		int plane = client.getPlane();
+
+		if ((renderable instanceof DynamicObject || renderable instanceof Model) &&
+			model.getModelHeight() < 180 &&
+			lavaPlugin.containsTile(plane, tileX, tileY))
+			return;
+
 		if (computeMode == ComputeMode.NONE)
 		{
-			modelX = x + client.getCameraX2();
-			modelY = y + client.getCameraY2();
-			modelZ = z + client.getCameraZ2();
 			modelOrientation = orientation;
 
 			drawingModel = true;
@@ -1615,8 +1632,6 @@ public class GpuPlugin extends Plugin implements DrawCallbacks
 		// Model may be in the scene buffer
 		else if (renderable instanceof Model && ((Model) renderable).getSceneId() == sceneUploader.sceneId)
 		{
-			Model model = (Model) renderable;
-
 			if (!isVisible(model, pitchSin, pitchCos, yawSin, yawCos, x, y, z))
 			{
 				return;
@@ -1644,46 +1659,42 @@ public class GpuPlugin extends Plugin implements DrawCallbacks
 		else
 		{
 			// Temporary model (animated or otherwise not a static Model on the scene)
-			Model model = renderable instanceof Model ? (Model) renderable : renderable.getModel();
-			if (model != null)
+			// Apply height to renderable from the model
+			if (model != renderable)
 			{
-				// Apply height to renderable from the model
-				if (model != renderable)
-				{
-					renderable.setModelHeight(model.getModelHeight());
-				}
-
-				if (!isVisible(model, pitchSin, pitchCos, yawSin, yawCos, x, y, z))
-				{
-					return;
-				}
-
-				model.calculateExtreme(orientation);
-				client.checkClickbox(model, orientation, pitchSin, pitchCos, yawSin, yawCos, x, y, z, hash);
-
-				boolean hasUv = model.getFaceTextures() != null;
-
-				int len = sceneUploader.pushModel(model, vertexBuffer, uvBuffer);
-
-				GpuIntBuffer b = bufferForTriangles(len / 3);
-
-				b.ensureCapacity(8);
-				IntBuffer buffer = b.getBuffer();
-				buffer.put(tempOffset);
-				buffer.put(hasUv ? tempUvOffset : -1);
-				buffer.put(len / 3);
-				buffer.put(targetBufferOffset);
-				buffer.put((model.getRadius() << 12) | orientation);
-				buffer.put(x + client.getCameraX2()).put(y + client.getCameraY2()).put(z + client.getCameraZ2());
-
-				tempOffset += len;
-				if (hasUv)
-				{
-					tempUvOffset += len;
-				}
-
-				targetBufferOffset += len;
+				renderable.setModelHeight(model.getModelHeight());
 			}
+
+			if (!isVisible(model, pitchSin, pitchCos, yawSin, yawCos, x, y, z))
+			{
+				return;
+			}
+
+			model.calculateExtreme(orientation);
+			client.checkClickbox(model, orientation, pitchSin, pitchCos, yawSin, yawCos, x, y, z, hash);
+
+			boolean hasUv = model.getFaceTextures() != null;
+
+			int len = sceneUploader.pushModel(model, vertexBuffer, uvBuffer);
+
+			GpuIntBuffer b = bufferForTriangles(len / 3);
+
+			b.ensureCapacity(8);
+			IntBuffer buffer = b.getBuffer();
+			buffer.put(tempOffset);
+			buffer.put(hasUv ? tempUvOffset : -1);
+			buffer.put(len / 3);
+			buffer.put(targetBufferOffset);
+			buffer.put((model.getRadius() << 12) | orientation);
+			buffer.put(x + client.getCameraX2()).put(y + client.getCameraY2()).put(z + client.getCameraZ2());
+
+			tempOffset += len;
+			if (hasUv)
+			{
+				tempUvOffset += len;
+			}
+
+			targetBufferOffset += len;
 		}
 	}
 

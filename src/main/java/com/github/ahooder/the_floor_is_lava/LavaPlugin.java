@@ -28,6 +28,8 @@ package com.github.ahooder.the_floor_is_lava;
 
 import com.github.ahooder.the_floor_is_lava.gpu.GpuPlugin;
 import com.github.ahooder.the_floor_is_lava.overlays.MinimapOverlay;
+import com.github.ahooder.the_floor_is_lava.overlays.TileCounterOverlay;
+import com.github.ahooder.the_floor_is_lava.overlays.WorldMapOverlay;
 import com.google.common.base.Strings;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
@@ -39,6 +41,7 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import javax.swing.SwingUtilities;
@@ -69,11 +72,7 @@ import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.plugins.PluginInstantiationException;
 import net.runelite.client.plugins.PluginManager;
-import net.runelite.client.ui.ClientToolbar;
-import net.runelite.client.ui.NavigationButton;
 import net.runelite.client.ui.overlay.OverlayManager;
-import net.runelite.client.ui.overlay.worldmap.WorldMapOverlay;
-import net.runelite.client.util.ImageUtil;
 
 @Slf4j
 @PluginDescriptor(
@@ -102,10 +101,10 @@ public class LavaPlugin extends Plugin
 	private ClientThread clientThread;
 
 	@Inject
-	private ClientToolbar clientToolbar;
+	private EventBus eventBus;
 
 	@Inject
-	private EventBus eventBus;
+	private ScheduledExecutorService executorService;
 
 	@Inject
 	private PluginManager pluginManager;
@@ -123,13 +122,13 @@ public class LavaPlugin extends Plugin
 	private WorldMapOverlay worldMapOverlay;
 
 	@Inject
-	private ConfigEvaluator config;
-
-	@Inject
-	private LavaPlacer lavaPlacer;
+	private TileCounterOverlay tileCounterOverlay;
 
 	@Inject
 	private GpuPlugin gpuPlugin;
+
+	@Inject
+	private Config config;
 
 	@Provides
 	Config provideConfig(ConfigManager configManager)
@@ -157,10 +156,9 @@ public class LavaPlugin extends Plugin
 
 	private final HashSet<Integer> tutorialIslandRegionIds = new HashSet<Integer>();
 
-	private int totalTilesUsed, remainingTiles, xpUntilNextTile;
+	private int totalTileCount;
 	private LocalPoint lastTile;
 	private int lastPlane;
-	private boolean lastAutoTilesConfig = false;
 	private boolean inHouse = false;
 	private long totalXp;
 
@@ -229,17 +227,8 @@ public class LavaPlugin extends Plugin
 	@Subscribe
 	public void onConfigChanged(ConfigChanged event)
 	{
-		// Check if automark tiles is on, and if so attempt to step on current tile
-		final WorldPoint playerPos = client.getLocalPlayer().getWorldLocation();
-		final LocalPoint playerPosLocal = LocalPoint.fromWorld(client, playerPos);
-		if (playerPosLocal != null && config.automarkTiles() && !lastAutoTilesConfig)
-		{
-			handleWalkedToTile(playerPosLocal);
-		}
-		lastAutoTilesConfig = config.automarkTiles();
 		updateTileCounter();
 	}
-
 
 	@Subscribe
 	public void onGameObjectSpawned(GameObjectSpawned event)
@@ -270,21 +259,10 @@ public class LavaPlugin extends Plugin
 				tutorialIslandRegionIds.add(12592);
 				overlayManager.add(minimapOverlay);
 				overlayManager.add(worldMapOverlay);
+				overlayManager.add(tileCounterOverlay);
 				loadPoints();
 				updateTileCounter();
 				log.debug("startup");
-
-				SwingUtilities.invokeLater(() -> {
-					ImportPanel panel = new ImportPanel(this);
-					NavigationButton navButton = NavigationButton.builder()
-						.tooltip("TheFloorIsLava Import")
-						.icon(ImageUtil.getResourceStreamFromClass(getClass(), "/icon.png"))
-						.priority(70)
-						.panel(panel)
-						.build();
-
-					clientToolbar.addNavigation(navButton);
-				});
 			}
 			catch (Throwable e)
 			{
@@ -320,9 +298,19 @@ public class LavaPlugin extends Plugin
 			tutorialIslandRegionIds.clear();
 			overlayManager.remove(minimapOverlay);
 			overlayManager.remove(worldMapOverlay);
+			overlayManager.remove(tileCounterOverlay);
 			points.clear();
-			lavaPlacer.update();
 		});
+	}
+
+	private void clearAllLavaTiles()
+	{
+		configManager.getConfigurationKeys(Config.GROUP)
+			.stream()
+			.filter(key -> key.startsWith(Config.GROUP + "." + REGION_PREFIX))
+			.forEach(key -> {
+				configManager.unsetConfiguration(Config.GROUP, key.substring(Config.GROUP.length() + 1));
+			});
 	}
 
 	private void autoMark()
@@ -359,60 +347,6 @@ public class LavaPlugin extends Plugin
 			updateTileCounter();
 			totalXp = currentTotalXp;
 		}
-	}
-
-	public void importGroundMarkerTiles()
-	{
-		// Get and store all the Ground Markers Regions
-		List<String> groundMarkerRegions = getAllRegionIds("groundMarker");
-		// If none, Exit function
-
-		// Get and store array list of existing TheFloorIsLava World Regions (like updateTileCounter does)
-		List<String> theFloorIsLavaModeRegions = getAllRegionIds(Config.GROUP);
-
-		// CONVERSION
-		// Loop through Ground Marker Regions
-		for (String region : groundMarkerRegions)
-		{
-			// Get Ground Markers Region's Tiles
-			ArrayList<LavaTile> groundMarkerTiles =
-				new ArrayList<>(getConfiguration("groundMarker", REGION_PREFIX + region));
-			// If region already exists in TheFloorIsLava World Regions Array:
-			if (theFloorIsLavaModeRegions.contains(region))
-			{
-				// Create Empty ArrayList for Region;
-				// Get TheFloorIsLava Region's tiles and add them to the region array list
-				ArrayList<LavaTile> regionTiles = new ArrayList<>(getTiles(region));
-
-				// Create int for regionOriginalSize;
-				// Set regionOriginalSize to arraylists length
-				int regionOriginalSize = regionTiles.size();
-
-				// Loop through Ground Markers Points
-				for (LavaTile groundMarkerTile : groundMarkerTiles)
-				{
-					// If Ground Marker point already exists in TheFloorIsLava World Region: Break loop iteration
-					if (regionTiles.contains(groundMarkerTile))
-					{
-						continue;
-					}
-					// Add point to array list
-					regionTiles.add(groundMarkerTile);
-				}
-				// If regionOriginalSize != current size
-				if (regionOriginalSize != regionTiles.size())
-				{
-					// Save points for arrayList
-					savePoints(Integer.parseInt(region), regionTiles);
-				}
-			}
-			else
-			{
-				// Save points for that region
-				savePoints(Integer.parseInt(region), groundMarkerTiles);
-			}
-		}
-		loadPoints();
 	}
 
 	List<String> getAllRegionIds(String configGroup)
@@ -457,40 +391,7 @@ public class LavaPlugin extends Plugin
 		}
 
 		log.debug("Updating tile counter");
-
-		updateTotalTilesUsed(totalTiles);
-		updateRemainingTiles(totalTiles);
-		updateXpUntilNextTile();
-	}
-
-	private void updateTotalTilesUsed(int totalTilesCount)
-	{
-		totalTilesUsed = totalTilesCount;
-	}
-
-	private void updateRemainingTiles(int placedTiles)
-	{
-		// Start with tiles offset. We always get these
-		int earnedTiles = config.tilesOffset();
-
-		// If including xp, add those tiles in
-		if (!config.excludeExp())
-		{
-			earnedTiles += (int) client.getOverallExperience() / config.expPerTile();
-		}
-
-		// If including total level, add those tiles in
-		if (config.includeTotalLevel())
-		{
-			earnedTiles += client.getTotalLevel();
-		}
-
-		remainingTiles = earnedTiles - placedTiles;
-	}
-
-	private void updateXpUntilNextTile()
-	{
-		xpUntilNextTile = config.expPerTile() - Integer.parseInt(Long.toString(client.getOverallExperience() % config.expPerTile()));
+		totalTileCount = totalTiles;
 	}
 
 	private Collection<LavaTile> getConfiguration(String configGroup, String key)
@@ -498,13 +399,9 @@ public class LavaPlugin extends Plugin
 		String json = configManager.getConfiguration(configGroup, key);
 
 		if (Strings.isNullOrEmpty(json))
-		{
 			return Collections.emptyList();
-		}
 
-		return GSON.fromJson(json, new TypeToken<List<LavaTile>>()
-		{
-		}.getType());
+		return GSON.fromJson(json, new TypeToken<List<LavaTile>>() {}.getType());
 	}
 
 	private void loadPoints()
@@ -526,7 +423,6 @@ public class LavaPlugin extends Plugin
 			points.addAll(worldPoint);
 		}
 		updateTileCounter();
-		lavaPlacer.update();
 	}
 
 	private void savePoints(int regionId, Collection<LavaTile> points)
@@ -560,18 +456,14 @@ public class LavaPlugin extends Plugin
 
 	public int getTotalTiles()
 	{
-		return totalTilesUsed;
-	}
-
-	public int getRemainingTiles()
-	{
-		return remainingTiles;
+		return totalTileCount;
 	}
 
 	public boolean containsTile(int plane, int tileX, int tileY) {
 		for (final WorldPoint wp : getPoints()) {
-			LocalPoint p = LocalPoint.fromWorld(client, wp);
-			if (wp.getPlane() == plane && p.getSceneX() == tileX && p.getSceneY() == tileY)
+			int sceneX = wp.getX() - client.getBaseX();
+			int sceneY = wp.getY() - client.getBaseY();
+			if (wp.getPlane() == plane && sceneX == tileX && sceneY == tileY)
 				return true;
 		}
 		return false;
@@ -595,15 +487,15 @@ public class LavaPlugin extends Plugin
 			return;
 		}
 
-		// Mark the tile they walked to
-		updateTileMark(currentPlayerPoint, true);
-
 		// If player moves 2 tiles in a straight line, fill in the middle tile
 		// TODO Fill path between last point and current point. This will fix missing tiles that occur when you lag
 		// TODO   and rendered frames are skipped. See if RL has an api that mimic's OSRS's pathing. If so, use that to
 		// TODO   set all tiles between current tile and lastTile as marked
 		if (lastTile != null)
 		{
+			// Mark the tile they walked from
+			updateTileMark(lastTile, true);
+
 			int xDiff = currentPlayerPoint.getX() - lastTile.getX();
 			int yDiff = currentPlayerPoint.getY() - lastTile.getY();
 			int yModifier = yDiff / 2;
@@ -824,25 +716,16 @@ public class LavaPlugin extends Plugin
 
 		if (markedValue)
 		{
-			// Try add tile
-			if (!lavaTiles.contains(point) && (config.allowTileDeficit() || remainingTiles > 0))
-			{
+			if (!lavaTiles.contains(point))
 				lavaTiles.add(point);
-			}
 		}
 		else
 		{
-			// Try remove tile
 			lavaTiles.remove(point);
 		}
 
 		savePoints(regionId, lavaTiles);
 		loadPoints();
-	}
-
-	public int getXpUntilNextTile()
-	{
-		return xpUntilNextTile;
 	}
 
 	@AllArgsConstructor
@@ -863,7 +746,7 @@ public class LavaPlugin extends Plugin
 		BLOCK_MOVEMENT_FULL(CollisionDataFlag.BLOCK_MOVEMENT_FULL);
 
 		@Getter
-		private int flag;
+		private final int flag;
 
 		/**
 		 * @param collisionData The tile collision flags.

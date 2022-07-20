@@ -44,52 +44,29 @@ public interface Config extends net.runelite.client.config.Config
 	String GROUP = "theFloorIsLava";
 
 	@ConfigSection(
-		name = "Game Mode",
-		description = "Select your TheFloorIsLava game mode'",
-		position = 1
-	)
-	String gameModeSection = "gameMode";
-
-	@ConfigSection(
 		name = "Settings",
 		description = "Settings'",
-		position = 2
+		position = 1
 	)
 	String settingsSection = "settings";
 
 	@ConfigSection(
-		name = "Custom Game Mode",
-		description = "Create a custom TheFloorIsLava game mode. Be sure to 'Enable Custom Game Mode'",
-		position = 3,
-		closedByDefault = true
-	)
-	String customGameModeSection = "customGameMode";
-
-	@ConfigSection(
 		name = "GPU Settings",
 		description = "Create a custom TheFloorIsLava game mode. Be sure to 'Enable Custom Game Mode'",
-		position = 4
+		position = 2
 	)
 	String gpuSettingsSection = "gpuSettings";
 
-	enum GameMode
-	{
-		COMMUNITY,
-		STRICT,
-		ACCELERATED
-	}
-
-	@Alpha
 	@ConfigItem(
-		keyName = "gameMode",
-		name = "Game Mode",
-		section = gameModeSection,
-		description = "Select your TheFloorIsLava game mode",
+		keyName = "tileCounterOverlay",
+		name = "Show tile counter overlay",
+		section = settingsSection,
+		description = "Configures whether to show an overlay with the total number of lava tiles.",
 		position = 1
 	)
-	default GameMode gameMode()
+	default boolean tileCounterOverlay()
 	{
-		return GameMode.COMMUNITY;
+		return false;
 	}
 
 	@ConfigItem(
@@ -104,51 +81,12 @@ public interface Config extends net.runelite.client.config.Config
 		return false;
 	}
 
-	@Range(
-		min = Integer.MIN_VALUE
-	)
-	@ConfigItem(
-		keyName = "warningLimit",
-		name = "Unspent tiles warning",
-		section = settingsSection,
-		description = "Highlights overlay when limit reached",
-		position = 3
-	)
-	default int warningLimit()
-	{
-		return 20;
-	}
-
-	@ConfigItem(
-		keyName = "enableTilesWarning",
-		name = "Enable Tiles Warning",
-		section = settingsSection,
-		description = "Turns on tile warnings when you reach your set limit or 0.",
-		position = 4
-	)
-	default boolean enableTileWarnings()
-	{
-		return false;
-	}
-
-	@ConfigItem(
-		keyName = "allowTileDeficit",
-		name = "Allow Tile Deficit",
-		section = settingsSection,
-		description = "Allows you to place tiles after you have none left.",
-		position = 5
-	)
-	default boolean allowTileDeficit()
-	{
-		return false;
-	}
-
 	@ConfigItem(
 		keyName = "drawOnMinimap",
 		name = "Draw tiles on minimap",
 		section = settingsSection,
 		description = "Configures whether marked tiles should be drawn on minimap",
-		position = 6
+		position = 3
 	)
 	default boolean drawTilesOnMinimap()
 	{
@@ -160,91 +98,11 @@ public interface Config extends net.runelite.client.config.Config
 		name = "Draw tiles on world map",
 		section = settingsSection,
 		description = "Configures whether marked tiles should be drawn on world map",
-		position = 5
+		position = 4
 	)
 	default boolean drawTilesOnWorldMap()
 	{
 		return false;
-	}
-
-	@Alpha
-	@ConfigItem(
-		keyName = "markerColor",
-		name = "Tile Color",
-		section = settingsSection,
-		description = "Configures the color of the tiles",
-		position = 6
-	)
-	default Color markerColor()
-	{
-		return Color.YELLOW;
-	}
-
-	/***   Custom Game Mode section   ***/
-	@ConfigItem(
-		keyName = "enableCustomGameMode",
-		name = "Enable Custom Game Mode",
-		description = "Settings below will override Game Mode defaults",
-		section = customGameModeSection,
-		position = 1
-	)
-	default boolean enableCustomGameMode()
-	{
-		return false;
-	}
-
-	@Range(
-		min = Integer.MIN_VALUE
-	)
-	@ConfigItem(
-		keyName = "tilesOffset",
-		name = "Bonus tiles",
-		description = "Add more tiles to your limit, set to 0 for off",
-		section = customGameModeSection,
-		position = 2
-	)
-	default int tilesOffset()
-	{
-		return 9;
-	}
-
-	@ConfigItem(
-		keyName = "includeTotalLevels",
-		name = "Include total level",
-		description = "Includes total level in usable tiles",
-		section = customGameModeSection,
-		position = 3
-	)
-	default boolean includeTotalLevel()
-	{
-		return false;
-	}
-
-	@ConfigItem(
-		keyName = "excludeExp",
-		name = "Exclude Experience",
-		description = "Includes experience / 1000 in usable tiles",
-		section = customGameModeSection,
-		position = 4
-	)
-	default boolean excludeExp()
-	{
-		return false;
-	}
-
-	@Range(
-		min = 500
-	)
-	@ConfigItem(
-		keyName = "expPerTile",
-		name = "Exp per Tile",
-		description = "Determines how much exp you require per tile",
-		section = customGameModeSection,
-		position = 5
-	)
-	default int expPerTile()
-	{
-		return 1000;
 	}
 
 	@Range(
@@ -259,7 +117,7 @@ public interface Config extends net.runelite.client.config.Config
 	)
 	default int drawDistance()
 	{
-		return 25;
+		return 90;
 	}
 
 	@ConfigItem(
@@ -319,7 +177,8 @@ public interface Config extends net.runelite.client.config.Config
 		name = "Compute Shaders",
 		description = "Offloads face sorting to GPU, enabling extended draw distance. Requires plugin restart.",
 		warning = "This feature requires OpenGL 4.3 to use. Please check that your GPU supports this.\nRestart the plugin for changes to take effect.",
-		position = 6
+		position = 6,
+		hidden = true
 	)
 	default boolean useComputeShaders()
 	{

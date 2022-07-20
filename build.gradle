@@ -11,7 +11,7 @@ repositories {
 	mavenCentral()
 }
 
-def runeLiteVersion = '1.8.27.1'
+def runeLiteVersion = '1.8.28'
 def lombokVersion = "1.18.24"
 
 dependencies {

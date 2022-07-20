@@ -45,7 +45,7 @@ import net.runelite.client.ui.overlay.OverlayLayer;
 import net.runelite.client.ui.overlay.OverlayPosition;
 import net.runelite.client.ui.overlay.OverlayPriority;
 
-class WorldMapOverlay extends Overlay
+public class WorldMapOverlay extends Overlay
 {
 	private static final int REGION_SIZE = 1 << 6;
 	// Bitmask to return first coordinate in region
@@ -83,7 +83,7 @@ class WorldMapOverlay extends Overlay
 	{
 		RenderOverview ro = client.getRenderOverview();
 		Widget map = client.getWidget(WidgetInfo.WORLD_MAP_VIEW);
-		Float pixelsPerTile = ro.getWorldMapZoom();
+		float pixelsPerTile = ro.getWorldMapZoom();
 		if (map == null)
 		{
 			return;
@@ -123,7 +123,7 @@ class WorldMapOverlay extends Overlay
 					int size = (regionPixelSize / (64 - Math.round(48f * ((8f - pixelsPerTile) / 7f))));
 					int tileSize = regionPixelSize / 64;
 
-					graphics.setColor(new Color(config.markerColor().getRGB()));
+					graphics.setColor(new Color(255, 89, 0));
 					graphics.fillRect(xPos + (tile.getRegionX() * tileSize), yPos - (tile.getRegionY() * tileSize) + tileSize, size - 1, size - 1);
 					graphics.drawRect(xPos + (tile.getRegionX() * tileSize), yPos - (tile.getRegionY() * tileSize) + tileSize, size - 1, size - 1);
 				}

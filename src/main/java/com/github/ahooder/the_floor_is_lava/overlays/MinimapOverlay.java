@@ -113,6 +113,6 @@ public class MinimapOverlay extends Overlay
 
 	private Color getTileColor()
 	{
-		return new Color(255, 50, 50);
+		return new Color(255, 89, 0);
 	}
 }
