@@ -24,30 +24,38 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-package com.tileman;
+package com.github.ahooder.the_floor_is_lava.overlays;
 
+import com.github.ahooder.the_floor_is_lava.Config;
+import com.github.ahooder.the_floor_is_lava.Plugin;
+import java.awt.Color;
+import java.awt.Dimension;
+import java.awt.Graphics2D;
+import java.awt.Polygon;
+import java.util.Collection;
+import javax.inject.Inject;
 import net.runelite.api.Client;
 import net.runelite.api.Perspective;
 import net.runelite.api.coords.LocalPoint;
 import net.runelite.api.coords.WorldPoint;
-import net.runelite.client.ui.overlay.*;
+import net.runelite.client.ui.overlay.Overlay;
+import net.runelite.client.ui.overlay.OverlayLayer;
+import net.runelite.client.ui.overlay.OverlayPosition;
+import net.runelite.client.ui.overlay.OverlayPriority;
+import net.runelite.client.ui.overlay.OverlayUtil;
 
-import javax.inject.Inject;
-import java.awt.*;
-import java.util.Collection;
-
-public class TilemanModeOverlay extends Overlay
+public class GameOverlay extends Overlay
 {
 	private static final int MAX_DRAW_DISTANCE = 32;
 
 	private final Client client;
-	private final TilemanModePlugin plugin;
+	private final Plugin plugin;
 
 	@Inject
-	private TilemanModeConfig config;
+	private Config config;
 
 	@Inject
-	private TilemanModeOverlay(Client client, TilemanModeConfig config, TilemanModePlugin plugin)
+	private GameOverlay(Client client, Config config, Plugin plugin)
 	{
 		this.client = client;
 		this.plugin = plugin;
@@ -98,11 +106,16 @@ public class TilemanModeOverlay extends Overlay
 		OverlayUtil.renderPolygon(graphics, poly, getTileColor());
 	}
 
-	private Color getTileColor() {
-		if(config.enableTileWarnings()) {
-			if (plugin.getRemainingTiles() <= 0) {
+	private Color getTileColor()
+	{
+		if (config.enableTileWarnings())
+		{
+			if (plugin.getRemainingTiles() <= 0)
+			{
 				return Color.RED;
-			} else if (plugin.getRemainingTiles() <= config.warningLimit()) {
+			}
+			else if (plugin.getRemainingTiles() <= config.warningLimit())
+			{
 				return new Color(255, 153, 0);
 			}
 		}

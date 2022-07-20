@@ -23,7 +23,7 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-package com.tileman;
+package com.github.ahooder.the_floor_is_lava;
 
 import lombok.Value;
 
@@ -31,10 +31,10 @@ import lombok.Value;
  * Used for serialization of ground marker points.
  */
 @Value
-class TilemanModeTile
+public class LavaTile
 {
-	private int regionId;
-	private int regionX;
-	private int regionY;
-	private int z;
+	int regionId;
+	int regionX;
+	int regionY;
+	int z;
 }
