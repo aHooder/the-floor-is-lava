@@ -323,6 +323,12 @@ public class LavaPlugin extends Plugin
 
 	private int getPlaneIncludingBridge(int tileX, int tileY) {
 		int plane = client.getPlane();
+
+		WorldPoint wp = WorldPoint.fromScene(client, tileX, tileY, plane);
+		if (wp.getX() >= 3144 && wp.getY() >= 3472 &&
+			wp.getX() <= 3183 && wp.getY() <= 3508)
+			return plane;
+
 		byte[][][] tileSettings = client.getTileSettings();
 		if (plane == 0 && (tileSettings[1][tileX][tileY] & TILE_FLAG_BRIDGE) == TILE_FLAG_BRIDGE)
 			plane++;
