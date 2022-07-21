@@ -46,6 +46,8 @@ import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.BufferProvider;
 import net.runelite.api.Client;
+import net.runelite.api.Constants;
+import static net.runelite.api.Constants.TILE_FLAG_BRIDGE;
 import net.runelite.api.DynamicObject;
 import net.runelite.api.GameState;
 import net.runelite.api.JagexColor;
@@ -897,6 +899,9 @@ public class GpuPlugin extends Plugin implements DrawCallbacks
 		if (!lavaPlugin.containsTile(plane, tileX, tileY))
 			return false;
 
+		byte[][][] tileSettings = client.getTileSettings();
+		boolean isBridge = plane == 1 && (tileSettings[1][tileX][tileY] & TILE_FLAG_BRIDGE) != 0;
+
 		final int[][][] tileHeights = client.getTileHeights();
 
 		final int localX = tileX * Perspective.LOCAL_TILE_SIZE;
@@ -924,16 +929,25 @@ public class GpuPlugin extends Plugin implements DrawCallbacks
 		int nwtop = tileHeights[plane][tileX][tileY + 1];
 		int netop = tileHeights[plane][tileX + 1][tileY + 1];
 
+		int minTile = Math.max(Math.max(swtop, setop), Math.max(nwtop, netop));
+
 		int lavaHeight = depth;
 		if (plane > 0)
-			lavaHeight = Math.max(Math.max(swtop, setop), Math.max(nwtop, netop)) + 32;
+			lavaHeight = minTile + 32;
 
-		// Bottom face height
-		int nwbot = 0, nebot = 0, swbot = 0, sebot = 0;
 		nwtop -= lavaHeight;
 		netop -= lavaHeight;
 		swtop -= lavaHeight;
 		setop -= lavaHeight;
+
+		// Bottom face height
+		int nwbot = 0, nebot = 0, swbot = 0, sebot = 0;
+		if (isBridge) {
+			nwbot = nwtop;
+			nebot = netop;
+			swbot = swtop;
+			sebot = setop;
+		}
 
 		// Bottom face corners
 		int swx = 0;
@@ -946,13 +960,13 @@ public class GpuPlugin extends Plugin implements DrawCallbacks
 		int nwy = Perspective.LOCAL_TILE_SIZE;
 
 		// Add textured bottom face
-		vertexBuffer.put(nex, 0, ney, texColor);
-		vertexBuffer.put(nwx, 0, nwy, texColor);
-		vertexBuffer.put(sex, 0, sey, texColor);
+		vertexBuffer.put(nex, nebot, ney, texColor);
+		vertexBuffer.put(nwx, nwbot, nwy, texColor);
+		vertexBuffer.put(sex, sebot, sey, texColor);
 
-		vertexBuffer.put(swx, 0, swy, texColor);
-		vertexBuffer.put(sex, 0, sey, texColor);
-		vertexBuffer.put(nwx, 0, nwy, texColor);
+		vertexBuffer.put(swx, swbot, swy, texColor);
+		vertexBuffer.put(sex, sebot, sey, texColor);
+		vertexBuffer.put(nwx, nwbot, nwy, texColor);
 
 		float tex = textureId + 1f;
 		uvBuffer.put(tex, 1.0f, 1.0f, textureMetadata);
