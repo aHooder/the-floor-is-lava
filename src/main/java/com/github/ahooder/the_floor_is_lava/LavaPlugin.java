@@ -56,6 +56,7 @@ import net.runelite.api.GameObject;
 import net.runelite.api.GameState;
 import net.runelite.api.KeyCode;
 import net.runelite.api.MenuAction;
+import net.runelite.api.Perspective;
 import net.runelite.api.Tile;
 import net.runelite.api.coords.LocalPoint;
 import net.runelite.api.coords.WorldPoint;
@@ -172,7 +173,7 @@ public class LavaPlugin extends Plugin
 	private final HashSet<Integer> tutorialIslandRegionIds = new HashSet<Integer>();
 
 	private int totalTileCount;
-	private LocalPoint lastTile;
+	private WorldPoint lastTile;
 	private int lastPlane;
 	private boolean inHouse = false;
 	private long totalXp;
@@ -191,7 +192,7 @@ public class LavaPlugin extends Plugin
 		{
 			return;
 		}
-		handleMenuOption(target.getLocalLocation(), event.getMenuOption().equals(MARK));
+		handleMenuOption(target.getWorldLocation(), event.getMenuOption().equals(MARK));
 	}
 
 	@Subscribe
@@ -207,11 +208,10 @@ public class LavaPlugin extends Plugin
 				return;
 			}
 
-
-			final WorldPoint worldPoint = WorldPoint.fromLocalInstance(client, selectedSceneTile.getLocalLocation());
+			WorldPoint worldPoint = selectedSceneTile.getWorldLocation();
 			final int regionId = worldPoint.getRegionID();
 			final LavaTile point = new LavaTile(regionId, worldPoint.getRegionX(), worldPoint.getRegionY(),
-				getPlaneIncludingBridge(selectedSceneTile.getLocalLocation().getSceneX(), selectedSceneTile.getLocalLocation().getSceneY()));
+				getPlaneIncludingBridge(worldPoint));
 
 			client.createMenuEntry(-1)
 				.setOption(getTiles(regionId).contains(point) ? UNMARK : MARK)
@@ -231,10 +231,7 @@ public class LavaPlugin extends Plugin
 	public void onGameStateChanged(GameStateChanged gameStateChanged)
 	{
 		if (gameStateChanged.getGameState() != GameState.LOGGED_IN)
-		{
-			lastTile = null;
 			return;
-		}
 		loadPoints();
 		updateTileCounter();
 		inHouse = false;
@@ -352,21 +349,20 @@ public class LavaPlugin extends Plugin
 		loadPoints();
 	}
 
-	private int getPlaneIncludingBridge() {
-		LocalPoint point = client.getLocalPlayer().getLocalLocation();
-		return getPlaneIncludingBridge(point.getSceneX(), point.getSceneY());
-	}
+	private int getPlaneIncludingBridge(WorldPoint wp) {
+//		int plane = client.getPlane(); // TODO: check if this is now broken
+		int plane = wp.getPlane();
 
-	private int getPlaneIncludingBridge(int tileX, int tileY) {
-		int plane = client.getPlane();
-
-		WorldPoint wp = WorldPoint.fromScene(client, tileX, tileY, plane);
 		if (wp.getX() >= 3144 && wp.getY() >= 3472 &&
 			wp.getX() <= 3183 && wp.getY() <= 3508)
 			return plane;
 
+		LocalPoint lp = LocalPoint.fromWorld(client, wp);
+		if (lp == null)
+			return wp.getPlane();
+
 		byte[][][] tileSettings = client.getTileSettings();
-		if (plane == 0 && (tileSettings[1][tileX][tileY] & TILE_FLAG_BRIDGE) == TILE_FLAG_BRIDGE)
+		if (plane == 0 && (tileSettings[1][lp.getSceneX()][lp.getSceneY()] & TILE_FLAG_BRIDGE) == TILE_FLAG_BRIDGE)
 			plane++;
 		return plane;
 	}
@@ -379,27 +375,21 @@ public class LavaPlugin extends Plugin
 			return;
 		}
 
-		final LocalPoint playerPosLocal = LocalPoint.fromWorld(client, playerPos);
-		if (playerPosLocal == null)
-		{
-			return;
-		}
-
-		int playerPlane = getPlaneIncludingBridge(playerPosLocal.getSceneX(), playerPosLocal.getSceneY());
+		int playerPlane = getPlaneIncludingBridge(playerPos);
 		long currentTotalXp = client.getOverallExperience();
 
 		// If we have no last tile, we probably just spawned in, so make sure we walk on our current tile
 		if ((lastTile == null
-			|| (lastTile.distanceTo(playerPosLocal) != 0 && lastPlane == playerPlane)
+			|| (lastTile.distanceTo(playerPos) != 0 && lastPlane == playerPlane)
 			|| lastPlane != playerPlane) && !regionIsOnTutorialIsland(playerPos.getRegionID()))
 		{
 			// Player moved
-			handleWalkedToTile(playerPosLocal);
-			lastTile = playerPosLocal;
-			lastPlane = getPlaneIncludingBridge(lastTile.getSceneX(), lastTile.getSceneY());
+			handleWalkedToTile(playerPos);
+			lastTile = playerPos;
+			lastPlane = getPlaneIncludingBridge(lastTile);
 			updateTileCounter();
 			log.debug("player moved");
-			log.debug("last tile={}  distance={}", lastTile, lastTile == null ? "null" : lastTile.distanceTo(playerPosLocal));
+			log.debug("last tile={}  distance={}", lastTile, lastTile == null ? "null" : lastTile.distanceTo(playerPos));
 		}
 		else if (totalXp != currentTotalXp)
 		{
@@ -528,7 +518,7 @@ public class LavaPlugin extends Plugin
 		return false;
 	}
 
-	private void handleMenuOption(LocalPoint selectedPoint, boolean markedValue)
+	private void handleMenuOption(WorldPoint selectedPoint, boolean markedValue)
 	{
 		if (selectedPoint == null)
 		{
@@ -537,7 +527,7 @@ public class LavaPlugin extends Plugin
 		updateTileMark(selectedPoint, markedValue);
 	}
 
-	private void handleWalkedToTile(LocalPoint currentPlayerPoint)
+	private void handleWalkedToTile(WorldPoint currentPlayerPoint)
 	{
 		if (currentPlayerPoint == null ||
 			inHouse ||
@@ -557,10 +547,18 @@ public class LavaPlugin extends Plugin
 
 			int xDiff = currentPlayerPoint.getX() - lastTile.getX();
 			int yDiff = currentPlayerPoint.getY() - lastTile.getY();
-			int yModifier = yDiff / 2;
 			int xModifier = xDiff / 2;
+			int yModifier = yDiff / 2;
 
-			switch (lastTile.distanceTo(currentPlayerPoint))
+			int distance;
+			{
+				int x = xDiff * Perspective.LOCAL_TILE_SIZE;
+				int y = yDiff * Perspective.LOCAL_TILE_SIZE;
+				distance = (int) Math.sqrt(x * x + y * y);
+			}
+			log.info("diff: {},{}, mod: {},{}, distance: {}", xDiff, yDiff, xModifier, yModifier, distance);
+
+			switch (distance)
 			{
 				case 0: // Haven't moved
 				case 128: // Moved 1 tile
@@ -570,7 +568,8 @@ public class LavaPlugin extends Plugin
 					break;
 				case 256: // Moved 2 tiles straight
 				case 362: // Moved 2 tiles diagonally
-					fillTile(new LocalPoint(lastTile.getX() + xModifier, lastTile.getY() + yModifier));
+					log.info("Moved straight or diagonally");
+					fillTile(new WorldPoint(lastTile.getX() + xModifier, lastTile.getY() + yModifier, lastTile.getPlane()));
 					break;
 				case 286: // Moved in an 'L' shape
 					handleLMovement(xDiff, yDiff);
@@ -601,7 +600,7 @@ public class LavaPlugin extends Plugin
 
 		if (tileBesideFlagsArray.length == 0)
 		{
-			fillTile(new LocalPoint(lastTile.getX() + tileBesideXDiff / 2, lastTile.getY() + tileBesideYDiff / 2));
+			fillTile(new WorldPoint(lastTile.getX() + tileBesideXDiff / 2, lastTile.getY() + tileBesideYDiff / 2, lastTile.getPlane()));
 		}
 		else if (containsAnyOf(fullBlock, tileBesideFlagsArray))
 		{
@@ -613,7 +612,7 @@ public class LavaPlugin extends Plugin
 			{
 				xModifier = 128;
 			}
-			fillTile(new LocalPoint(lastTile.getX() + xModifier, lastTile.getY() + yModifier));
+			fillTile(new WorldPoint(lastTile.getX() + xModifier, lastTile.getY() + yModifier, lastTile.getPlane()));
 		}
 		else if (containsAnyOf(allDirections, tileBesideFlagsArray))
 		{
@@ -650,12 +649,12 @@ public class LavaPlugin extends Plugin
 				{
 					xModifier = 128;
 				}
-				fillTile(new LocalPoint(lastTile.getX() + xModifier, lastTile.getY() + yModifier));
+				fillTile(new WorldPoint(lastTile.getX() + xModifier, lastTile.getY() + yModifier, lastTile.getPlane()));
 			}
 			else
 			{
 				// Normal Pathing
-				fillTile(new LocalPoint(lastTile.getX() + tileBesideXDiff / 2, lastTile.getY() + tileBesideYDiff / 2));
+				fillTile(new WorldPoint(lastTile.getX() + tileBesideXDiff / 2, lastTile.getY() + tileBesideYDiff / 2, lastTile.getPlane()));
 			}
 		}
 	}
@@ -684,12 +683,12 @@ public class LavaPlugin extends Plugin
 			if (containsAnyOf(fullBlock, northTile)
 				|| containsAnyOf(northTile, new MovementFlag[]{MovementFlag.BLOCK_MOVEMENT_SOUTH, MovementFlag.BLOCK_MOVEMENT_WEST}))
 			{
-				fillTile(southPoint);
+				fillTile(WorldPoint.fromLocal(client, southPoint));
 			}
 			else if (containsAnyOf(fullBlock, southTile)
 				|| containsAnyOf(southTile, new MovementFlag[]{MovementFlag.BLOCK_MOVEMENT_NORTH, MovementFlag.BLOCK_MOVEMENT_EAST}))
 			{
-				fillTile(northPoint);
+				fillTile(WorldPoint.fromLocal(client, northPoint));
 			}
 		}
 		else
@@ -698,12 +697,12 @@ public class LavaPlugin extends Plugin
 			if (containsAnyOf(fullBlock, northTile)
 				|| containsAnyOf(northTile, new MovementFlag[]{MovementFlag.BLOCK_MOVEMENT_SOUTH, MovementFlag.BLOCK_MOVEMENT_EAST}))
 			{
-				fillTile(southPoint);
+				fillTile(WorldPoint.fromLocal(client, southPoint));
 			}
 			else if (containsAnyOf(fullBlock, southTile)
 				|| containsAnyOf(southTile, new MovementFlag[]{MovementFlag.BLOCK_MOVEMENT_NORTH, MovementFlag.BLOCK_MOVEMENT_WEST}))
 			{
-				fillTile(northPoint);
+				fillTile(WorldPoint.fromLocal(client, northPoint));
 			}
 		}
 	}
@@ -749,20 +748,18 @@ public class LavaPlugin extends Plugin
 		return tutorialIslandRegionIds.contains(regionId);
 	}
 
-	private void fillTile(LocalPoint localPoint)
+	private void fillTile(WorldPoint point)
 	{
-		if (lastPlane != getPlaneIncludingBridge(localPoint.getSceneX(), localPoint.getSceneY()))
+		if (lastPlane != getPlaneIncludingBridge(point))
 		{
 			return;
 		}
-		updateTileMark(localPoint, true);
+		updateTileMark(point, true);
 	}
 
-	private void updateTileMark(LocalPoint localPoint, boolean markedValue)
+	private void updateTileMark(WorldPoint worldPoint, boolean markedValue)
 	{
-		int plane = getPlaneIncludingBridge(localPoint.getSceneX(), localPoint.getSceneY());
-		WorldPoint worldPoint = WorldPoint.fromLocalInstance(client, localPoint, plane);
-
+		int plane = getPlaneIncludingBridge(worldPoint);
 		int regionId = worldPoint.getRegionID();
 		LavaTile point = new LavaTile(regionId, worldPoint.getRegionX(), worldPoint.getRegionY(), plane);
 		log.debug("Updating point: {} - {}", point, worldPoint);
