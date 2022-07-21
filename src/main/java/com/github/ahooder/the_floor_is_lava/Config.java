@@ -105,6 +105,18 @@ public interface Config extends net.runelite.client.config.Config
 		return false;
 	}
 
+	@ConfigItem(
+		keyName = "showResetAllOption",
+		name = "Enable reset-all option",
+		section = settingsSection,
+		description = "Adds a new right-click option on the inventory button for discarding all lava tiles",
+		position = 5
+	)
+	default boolean showResetAllOption()
+	{
+		return false;
+	}
+
 	@Range(
 		max = MAX_DISTANCE
 	)

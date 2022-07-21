@@ -51,7 +51,6 @@ import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
 import net.runelite.api.CollisionData;
 import net.runelite.api.CollisionDataFlag;
-import net.runelite.api.Constants;
 import static net.runelite.api.Constants.TILE_FLAG_BRIDGE;
 import net.runelite.api.GameObject;
 import net.runelite.api.GameState;
@@ -65,11 +64,14 @@ import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GameTick;
 import net.runelite.api.events.MenuEntryAdded;
 import net.runelite.api.events.MenuOptionClicked;
+import net.runelite.api.widgets.WidgetInfo;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.EventBus;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.events.ConfigChanged;
+import net.runelite.client.menus.MenuManager;
+import net.runelite.client.menus.WidgetMenuOption;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.plugins.PluginInstantiationException;
@@ -88,8 +90,16 @@ public class LavaPlugin extends Plugin
 {
 	private static final String MARK = "Place lava tile";
 	private static final String UNMARK = "Clear lava tile";
+	private static final String UNMARK_ALL = "Clear all lava tiles";
 	private static final String WALK_HERE = "Walk here";
 	private static final String REGION_PREFIX = "region_";
+
+	private static final WidgetMenuOption clearAllOptionFixed = new WidgetMenuOption(
+		UNMARK_ALL, "", WidgetInfo.FIXED_VIEWPORT_INVENTORY_TAB);
+	private static final WidgetMenuOption clearAllOptionResizable = new WidgetMenuOption(
+		UNMARK_ALL, "", WidgetInfo.RESIZABLE_VIEWPORT_INVENTORY_TAB);
+	private static final WidgetMenuOption clearAllOptionResizable2 = new WidgetMenuOption(
+		UNMARK_ALL, "", WidgetInfo.RESIZABLE_VIEWPORT_BOTTOM_LINE_INVENTORY_TAB);
 
 	private static final Gson GSON = new Gson();
 
@@ -116,6 +126,9 @@ public class LavaPlugin extends Plugin
 
 	@Inject
 	private OverlayManager overlayManager;
+
+	@Inject
+	private MenuManager menuManager;
 
 	@Inject
 	private MinimapOverlay minimapOverlay;
@@ -230,7 +243,11 @@ public class LavaPlugin extends Plugin
 	@Subscribe
 	public void onConfigChanged(ConfigChanged event)
 	{
-		updateTileCounter();
+		if (event.getGroup().equals(Config.GROUP)) {
+			updateTileCounter();
+			if (event.getKey().equals("showResetAllOption"))
+				updateCustomOptions();
+		}
 	}
 
 	@Subscribe
@@ -263,6 +280,7 @@ public class LavaPlugin extends Plugin
 				overlayManager.add(minimapOverlay);
 				overlayManager.add(worldMapOverlay);
 				overlayManager.add(tileCounterOverlay);
+				updateCustomOptions();
 				loadPoints();
 				updateTileCounter();
 				log.debug("startup");
@@ -302,8 +320,25 @@ public class LavaPlugin extends Plugin
 			overlayManager.remove(minimapOverlay);
 			overlayManager.remove(worldMapOverlay);
 			overlayManager.remove(tileCounterOverlay);
+			menuManager.removeManagedCustomMenu(clearAllOptionFixed);
 			points.clear();
 		});
+	}
+
+	private void updateCustomOptions() {
+		if (config.showResetAllOption()) {
+			menuManager.addManagedCustomMenu(clearAllOptionFixed, e -> clearAllLavaTiles());
+			menuManager.addManagedCustomMenu(clearAllOptionResizable, e -> clearAllLavaTiles());
+			menuManager.addManagedCustomMenu(clearAllOptionResizable2, e -> clearAllLavaTiles());
+		} else {
+			removeCustomOptions();
+		}
+	}
+
+	private void removeCustomOptions() {
+		menuManager.removeManagedCustomMenu(clearAllOptionFixed);
+		menuManager.removeManagedCustomMenu(clearAllOptionResizable);
+		menuManager.removeManagedCustomMenu(clearAllOptionResizable2);
 	}
 
 	private void clearAllLavaTiles()
@@ -314,6 +349,7 @@ public class LavaPlugin extends Plugin
 			.forEach(key -> {
 				configManager.unsetConfiguration(Config.GROUP, key.substring(Config.GROUP.length() + 1));
 			});
+		loadPoints();
 	}
 
 	private int getPlaneIncludingBridge() {
