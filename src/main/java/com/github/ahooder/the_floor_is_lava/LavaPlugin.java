@@ -760,11 +760,6 @@ public class LavaPlugin extends Plugin
 
 	private void updateTileMark(LocalPoint localPoint, boolean markedValue)
 	{
-		if (containsAnyOf(getTileMovementFlags(localPoint), fullBlock))
-		{
-			return;
-		}
-
 		int plane = getPlaneIncludingBridge(localPoint.getSceneX(), localPoint.getSceneY());
 		WorldPoint worldPoint = WorldPoint.fromLocalInstance(client, localPoint, plane);
 
