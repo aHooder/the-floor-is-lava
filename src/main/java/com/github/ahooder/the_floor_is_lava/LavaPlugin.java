@@ -381,7 +381,7 @@ public class LavaPlugin extends Plugin
 		// If we have no last tile, we probably just spawned in, so make sure we walk on our current tile
 		if ((lastTile == null
 			|| (lastTile.distanceTo(playerPos) != 0 && lastPlane == playerPlane)
-			|| lastPlane != playerPlane) && !regionIsOnTutorialIsland(playerPos.getRegionID()))
+			|| lastPlane != playerPlane))
 		{
 			// Player moved
 			handleWalkedToTile(playerPos);
