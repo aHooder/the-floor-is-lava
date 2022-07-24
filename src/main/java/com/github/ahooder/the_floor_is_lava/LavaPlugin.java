@@ -763,7 +763,7 @@ public class LavaPlugin extends Plugin
 	}
 
 	public int getRemainingDousePoints() {
-		return client.getTotalLevel() - config.getTilesDoused();
+		return client.getTotalLevel() - config.getTilesDoused() - 32;
 	}
 
 	private void updateTileMark(@NonNull WorldPoint worldPoint, boolean markedValue, boolean force)
