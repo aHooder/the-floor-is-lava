@@ -34,6 +34,7 @@ import com.google.common.base.Strings;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 import com.google.inject.Provides;
+import java.awt.Color;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -47,7 +48,9 @@ import javax.inject.Inject;
 import javax.swing.SwingUtilities;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
+import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
+import net.runelite.api.ChatMessageType;
 import net.runelite.api.Client;
 import net.runelite.api.CollisionData;
 import net.runelite.api.CollisionDataFlag;
@@ -78,6 +81,7 @@ import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.plugins.PluginInstantiationException;
 import net.runelite.client.plugins.PluginManager;
 import net.runelite.client.ui.overlay.OverlayManager;
+import net.runelite.client.util.ColorUtil;
 
 @Slf4j
 @PluginDescriptor(
@@ -89,18 +93,19 @@ import net.runelite.client.ui.overlay.OverlayManager;
 )
 public class LavaPlugin extends Plugin
 {
-	private static final String MARK = "Place lava tile";
-	private static final String UNMARK = "Clear lava tile";
-	private static final String UNMARK_ALL = "Clear all lava tiles";
+	private static final String DOUSE_TILE = "Douse lava tile";
+	private static final String PLACE_TILE = "Place lava tile";
+	private static final String FORCE_DOUSE_TILE = "Force clear lava tile";
+	private static final String CLEAR_ALL_TILES = "Clear all lava tiles";
 	private static final String WALK_HERE = "Walk here";
 	private static final String REGION_PREFIX = "region_";
 
 	private static final WidgetMenuOption clearAllOptionFixed = new WidgetMenuOption(
-		UNMARK_ALL, "", WidgetInfo.FIXED_VIEWPORT_INVENTORY_TAB);
+		CLEAR_ALL_TILES, "", WidgetInfo.FIXED_VIEWPORT_INVENTORY_TAB);
 	private static final WidgetMenuOption clearAllOptionResizable = new WidgetMenuOption(
-		UNMARK_ALL, "", WidgetInfo.RESIZABLE_VIEWPORT_INVENTORY_TAB);
+		CLEAR_ALL_TILES, "", WidgetInfo.RESIZABLE_VIEWPORT_INVENTORY_TAB);
 	private static final WidgetMenuOption clearAllOptionResizable2 = new WidgetMenuOption(
-		UNMARK_ALL, "", WidgetInfo.RESIZABLE_VIEWPORT_BOTTOM_LINE_INVENTORY_TAB);
+		CLEAR_ALL_TILES, "", WidgetInfo.RESIZABLE_VIEWPORT_BOTTOM_LINE_INVENTORY_TAB);
 
 	private static final Gson GSON = new Gson();
 
@@ -182,24 +187,24 @@ public class LavaPlugin extends Plugin
 	public void onMenuOptionClicked(MenuOptionClicked event)
 	{
 		if (event.getMenuAction().getId() != MenuAction.RUNELITE.getId() ||
-			!(event.getMenuOption().equals(MARK) || event.getMenuOption().equals(UNMARK)))
-		{
+			!event.getMenuOption().startsWith(DOUSE_TILE) &&
+			!event.getMenuOption().equals(PLACE_TILE) &&
+			!event.getMenuOption().equals(FORCE_DOUSE_TILE))
 			return;
-		}
 
 		Tile target = client.getSelectedSceneTile();
 		if (target == null)
-		{
 			return;
-		}
-		handleMenuOption(target.getWorldLocation(), event.getMenuOption().equals(MARK));
+
+		updateTileMark(target.getWorldLocation(),
+			event.getMenuOption().equals(PLACE_TILE),
+			event.getMenuOption().equals(FORCE_DOUSE_TILE));
 	}
 
 	@Subscribe
 	public void onMenuEntryAdded(MenuEntryAdded event)
 	{
-		final boolean hotKeyPressed = client.isKeyPressed(KeyCode.KC_SHIFT);
-		if (hotKeyPressed && event.getOption().equals(WALK_HERE))
+		if (event.getOption().equals(WALK_HERE))
 		{
 			final Tile selectedSceneTile = client.getSelectedSceneTile();
 
@@ -213,11 +218,16 @@ public class LavaPlugin extends Plugin
 			final LavaTile point = new LavaTile(regionId, worldPoint.getRegionX(), worldPoint.getRegionY(),
 				getPlaneIncludingBridge(worldPoint));
 
-			client.createMenuEntry(-1)
-				.setOption(getTiles(regionId).contains(point) ? UNMARK : MARK)
-				.setTarget(event.getTarget())
-				.setType(MenuAction.RUNELITE);
-
+			boolean isLava = getTiles(regionId).contains(point);
+			boolean force = client.isKeyPressed(KeyCode.KC_SHIFT);
+			if (isLava || force) {
+				client.createMenuEntry(-1)
+					.setOption(force ?
+						(isLava ? FORCE_DOUSE_TILE : PLACE_TILE) :
+						getDouseOptionString())
+					.setTarget(event.getTarget())
+					.setType(MenuAction.RUNELITE);
+			}
 		}
 	}
 
@@ -428,6 +438,13 @@ public class LavaPlugin extends Plugin
 		return getConfiguration(Config.GROUP, REGION_PREFIX + regionId);
 	}
 
+	private String getDouseOptionString() {
+		return DOUSE_TILE + " " +
+			ColorUtil.wrapWithColorTag(String.format("(%s remaining)",
+				TileCounterOverlay.addCommasToNumber(getRemainingDousePoints())),
+				Color.GRAY);
+	}
+
 	private void updateTileCounter()
 	{
 		List<String> regions = configManager.getConfigurationKeys(Config.GROUP + ".region");
@@ -518,15 +535,6 @@ public class LavaPlugin extends Plugin
 		return false;
 	}
 
-	private void handleMenuOption(WorldPoint selectedPoint, boolean markedValue)
-	{
-		if (selectedPoint == null)
-		{
-			return;
-		}
-		updateTileMark(selectedPoint, markedValue);
-	}
-
 	private void handleWalkedToTile(WorldPoint currentPlayerPoint)
 	{
 		if (currentPlayerPoint == null ||
@@ -537,13 +545,10 @@ public class LavaPlugin extends Plugin
 		}
 
 		// If player moves 2 tiles in a straight line, fill in the middle tile
-		// TODO Fill path between last point and current point. This will fix missing tiles that occur when you lag
-		// TODO   and rendered frames are skipped. See if RL has an api that mimic's OSRS's pathing. If so, use that to
-		// TODO   set all tiles between current tile and lastTile as marked
 		if (lastTile != null)
 		{
 			// Mark the tile they walked from
-			updateTileMark(lastTile, true);
+			updateTileMark(lastTile, true, false);
 
 			int xDiff = currentPlayerPoint.getX() - lastTile.getX();
 			int yDiff = currentPlayerPoint.getY() - lastTile.getY();
@@ -754,10 +759,14 @@ public class LavaPlugin extends Plugin
 		{
 			return;
 		}
-		updateTileMark(point, true);
+		updateTileMark(point, true, false);
 	}
 
-	private void updateTileMark(WorldPoint worldPoint, boolean markedValue)
+	public int getRemainingDousePoints() {
+		return client.getTotalLevel() - config.getTilesDoused();
+	}
+
+	private void updateTileMark(@NonNull WorldPoint worldPoint, boolean markedValue, boolean force)
 	{
 		int plane = getPlaneIncludingBridge(worldPoint);
 		int regionId = worldPoint.getRegionID();
@@ -766,13 +775,21 @@ public class LavaPlugin extends Plugin
 
 		List<LavaTile> lavaTiles = new ArrayList<>(getTiles(regionId));
 
-		if (markedValue)
-		{
+		if (markedValue) {
 			if (!lavaTiles.contains(point))
 				lavaTiles.add(point);
-		}
-		else
-		{
+		} else {
+			if (!force) {
+				// Check if the player has any unspent douse points
+				if (getRemainingDousePoints() > 0) {
+					config.setTilesDoused(config.getTilesDoused() + 1);
+				} else {
+					client.addChatMessage(ChatMessageType.GAMEMESSAGE,
+						"[The Floor is Lava]", "You have no remaining douse points left.",
+						"", false);
+					return;
+				}
+			}
 			lavaTiles.remove(point);
 		}
 

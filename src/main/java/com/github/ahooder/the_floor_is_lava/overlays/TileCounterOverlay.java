@@ -44,8 +44,10 @@ public class TileCounterOverlay extends OverlayPanel
 	private Config config;
 	private final LavaPlugin plugin;
 
-	private final static String LAVA_TILES = "Lava Tiles:";
-	private final static String[] STRINGS = new String[]{ LAVA_TILES };
+	private final static String LAVA_TILES = "Lava tiles:";
+	private final static String REMAINING_DOUSES = "Remaining douses:";
+	private final static String TOTAL_DOUSES = "Tiles doused:";
+	private final static String[] STRINGS = new String[]{ LAVA_TILES, REMAINING_DOUSES, TOTAL_DOUSES};
 
 	@Inject
 	private TileCounterOverlay(LavaPlugin plugin)
@@ -64,15 +66,25 @@ public class TileCounterOverlay extends OverlayPanel
 			return null;
 
 		String lavaTiles = addCommasToNumber(plugin.getTotalTiles());
+		String remainingDouses = addCommasToNumber(plugin.getRemainingDousePoints());
+		String totalDouses = addCommasToNumber(config.getTilesDoused());
 
 		panelComponent.getChildren().add(LineComponent.builder()
 			.left(LAVA_TILES)
 			.right(lavaTiles)
 			.build());
+		panelComponent.getChildren().add(LineComponent.builder()
+			.left(REMAINING_DOUSES)
+			.right(remainingDouses)
+			.build());
+		panelComponent.getChildren().add(LineComponent.builder()
+			.left(TOTAL_DOUSES)
+			.right(totalDouses)
+			.build());
 
 		panelComponent.setPreferredSize(new Dimension(
 			getLongestStringWidth(STRINGS, graphics)
-				+ getLongestStringWidth(new String[]{lavaTiles}, graphics),
+				+ getLongestStringWidth(new String[]{lavaTiles, remainingDouses, totalDouses}, graphics),
 			0));
 
 		return super.render(graphics);
@@ -92,7 +104,7 @@ public class TileCounterOverlay extends OverlayPanel
 		return longest;
 	}
 
-	private String addCommasToNumber(int number)
+	public static String addCommasToNumber(int number)
 	{
 		String input = Integer.toString(number);
 		StringBuilder output = new StringBuilder();

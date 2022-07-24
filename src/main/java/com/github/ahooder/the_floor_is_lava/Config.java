@@ -31,8 +31,6 @@ import static com.github.ahooder.the_floor_is_lava.gpu.GpuPlugin.MAX_FOG_DEPTH;
 import com.github.ahooder.the_floor_is_lava.gpu.config.AntiAliasingMode;
 import com.github.ahooder.the_floor_is_lava.gpu.config.ColorBlindMode;
 import com.github.ahooder.the_floor_is_lava.gpu.config.UIScalingMode;
-import java.awt.Color;
-import net.runelite.client.config.Alpha;
 import net.runelite.client.config.ConfigGroup;
 import net.runelite.client.config.ConfigItem;
 import net.runelite.client.config.ConfigSection;
@@ -283,4 +281,19 @@ public interface Config extends net.runelite.client.config.Config
 	{
 		return 60;
 	}
+
+	// Internal configs
+
+	@ConfigItem(
+		keyName = "tilesDoused",
+		hidden = true,
+		name = "Tiles doused",
+		description = "Counter for how many lava tiles have been reverted to normal tiles"
+	)
+	default int getTilesDoused()
+	{
+		return 0;
+	}
+	@ConfigItem(keyName = "tilesDoused", hidden = true, name = "", description = "")
+	void setTilesDoused(int numTiles);
 }
