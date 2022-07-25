@@ -189,7 +189,7 @@ public class LavaPlugin extends Plugin
 
 	private int totalTileCount;
 	private int tilesDoused;
-	private WorldPoint lastTile;
+	private WorldPoint lastTile, queuedTile;
 	private int lastPlane;
 	private boolean inHouse = false;
 	private long totalXp;
@@ -399,7 +399,9 @@ public class LavaPlugin extends Plugin
 
 	private void autoMark()
 	{
-		final WorldPoint playerPos = client.getLocalPlayer().getWorldLocation();
+		// Handle the previous movement event now, delayed by one movement action
+		final WorldPoint playerPos = queuedTile;
+		queuedTile = client.getLocalPlayer().getWorldLocation();
 		if (playerPos == null)
 		{
 			return;
@@ -628,7 +630,7 @@ public class LavaPlugin extends Plugin
 		int tileBesideXDiff, tileBesideYDiff;
 
 		// Whichever direction has moved only one, keep it 0. This is the translation to the potential 'problem' gameObject
-		if (Math.abs(yDiff) == 128)
+		if (Math.abs(yDiff) == 1)
 		{
 			tileBesideXDiff = xDiff;
 			tileBesideYDiff = 0;
@@ -639,7 +641,8 @@ public class LavaPlugin extends Plugin
 			tileBesideYDiff = yDiff;
 		}
 
-		MovementFlag[] tileBesideFlagsArray = getTileMovementFlags(lastTile.getX() + tileBesideXDiff, lastTile.getY() + tileBesideYDiff);
+		MovementFlag[] tileBesideFlagsArray = getTileMovementFlags(
+			new WorldPoint(lastTile.getX() + tileBesideXDiff, lastTile.getY() + tileBesideYDiff, lastTile.getPlane()));
 
 		if (tileBesideFlagsArray.length == 0)
 		{
@@ -704,17 +707,17 @@ public class LavaPlugin extends Plugin
 
 	private void handleCornerMovement(int xDiff, int yDiff)
 	{
-		LocalPoint northPoint;
-		LocalPoint southPoint;
+		WorldPoint northPoint;
+		WorldPoint southPoint;
 		if (yDiff > 0)
 		{
-			northPoint = new LocalPoint(lastTile.getX(), lastTile.getY() + yDiff);
-			southPoint = new LocalPoint(lastTile.getX() + xDiff, lastTile.getY());
+			northPoint = new WorldPoint(lastTile.getX(), lastTile.getY() + yDiff, lastTile.getPlane());
+			southPoint = new WorldPoint(lastTile.getX() + xDiff, lastTile.getY(), lastTile.getPlane());
 		}
 		else
 		{
-			northPoint = new LocalPoint(lastTile.getX() + xDiff, lastTile.getY());
-			southPoint = new LocalPoint(lastTile.getX(), lastTile.getY() + yDiff);
+			northPoint = new WorldPoint(lastTile.getX() + xDiff, lastTile.getY(), lastTile.getPlane());
+			southPoint = new WorldPoint(lastTile.getX(), lastTile.getY() + yDiff, lastTile.getPlane());
 		}
 
 		MovementFlag[] northTile = getTileMovementFlags(northPoint);
@@ -726,12 +729,12 @@ public class LavaPlugin extends Plugin
 			if (containsAnyOf(fullBlock, northTile)
 				|| containsAnyOf(northTile, new MovementFlag[]{MovementFlag.BLOCK_MOVEMENT_SOUTH, MovementFlag.BLOCK_MOVEMENT_WEST}))
 			{
-				fillTile(WorldPoint.fromLocal(client, southPoint));
+				fillTile(southPoint);
 			}
 			else if (containsAnyOf(fullBlock, southTile)
 				|| containsAnyOf(southTile, new MovementFlag[]{MovementFlag.BLOCK_MOVEMENT_NORTH, MovementFlag.BLOCK_MOVEMENT_EAST}))
 			{
-				fillTile(WorldPoint.fromLocal(client, northPoint));
+				fillTile(northPoint);
 			}
 		}
 		else
@@ -740,34 +743,31 @@ public class LavaPlugin extends Plugin
 			if (containsAnyOf(fullBlock, northTile)
 				|| containsAnyOf(northTile, new MovementFlag[]{MovementFlag.BLOCK_MOVEMENT_SOUTH, MovementFlag.BLOCK_MOVEMENT_EAST}))
 			{
-				fillTile(WorldPoint.fromLocal(client, southPoint));
+				fillTile(southPoint);
 			}
 			else if (containsAnyOf(fullBlock, southTile)
 				|| containsAnyOf(southTile, new MovementFlag[]{MovementFlag.BLOCK_MOVEMENT_NORTH, MovementFlag.BLOCK_MOVEMENT_WEST}))
 			{
-				fillTile(WorldPoint.fromLocal(client, northPoint));
+				fillTile(northPoint);
 			}
 		}
 	}
 
-	private MovementFlag[] getTileMovementFlags(int x, int y)
+	private MovementFlag[] getTileMovementFlags(WorldPoint pointBeside)
 	{
-		LocalPoint pointBeside = new LocalPoint(x, y);
-
 		CollisionData[] collisionData = client.getCollisionMaps();
 		assert collisionData != null;
 		int[][] collisionDataFlags = collisionData[client.getPlane()].getFlags();
 
-		Set<MovementFlag> tilesBesideFlagsSet = MovementFlag.getSetFlags(collisionDataFlags[pointBeside.getSceneX()][pointBeside.getSceneY()]);
+		LocalPoint lp = LocalPoint.fromWorld(client, pointBeside);
+		if (lp == null)
+			return new MovementFlag[0];
+
+		Set<MovementFlag> tilesBesideFlagsSet = MovementFlag.getSetFlags(collisionDataFlags[lp.getSceneX()][lp.getSceneY()]);
 		MovementFlag[] tileBesideFlagsArray = new MovementFlag[tilesBesideFlagsSet.size()];
 		tilesBesideFlagsSet.toArray(tileBesideFlagsArray);
 
 		return tileBesideFlagsArray;
-	}
-
-	private MovementFlag[] getTileMovementFlags(LocalPoint localPoint)
-	{
-		return getTileMovementFlags(localPoint.getX(), localPoint.getY());
 	}
 
 	private boolean containsAnyOf(MovementFlag[] comparisonFlags, MovementFlag[] flagsToCompare)
