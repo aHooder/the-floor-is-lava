@@ -100,6 +100,7 @@ public class LavaPlugin extends Plugin
 	private static final String FORCE_DOUSE_TILE = "Force clear lava tile";
 	private static final String CLEAR_ALL_TILES = "Clear all lava tiles";
 	private static final String RESET_DOUSE_COUNTER = "Reset douse counter";
+	private static final String IMPORT_OLD_CONFIG = "Import old tiles";
 	private static final String WALK_HERE = "Walk here";
 	private static final String REGION_PREFIX = "region_";
 
@@ -116,6 +117,13 @@ public class LavaPlugin extends Plugin
 		RESET_DOUSE_COUNTER, "", WidgetInfo.RESIZABLE_VIEWPORT_INVENTORY_TAB);
 	private static final WidgetMenuOption resetDouseCounterOptionResizable2 = new WidgetMenuOption(
 		RESET_DOUSE_COUNTER, "", WidgetInfo.RESIZABLE_VIEWPORT_BOTTOM_LINE_INVENTORY_TAB);
+
+	private static final WidgetMenuOption importOldOptionFixed = new WidgetMenuOption(
+		IMPORT_OLD_CONFIG, "", WidgetInfo.FIXED_VIEWPORT_INVENTORY_TAB);
+	private static final WidgetMenuOption importOldOptionResizable = new WidgetMenuOption(
+		IMPORT_OLD_CONFIG, "", WidgetInfo.RESIZABLE_VIEWPORT_INVENTORY_TAB);
+	private static final WidgetMenuOption importOldOptionResizable2 = new WidgetMenuOption(
+		IMPORT_OLD_CONFIG, "", WidgetInfo.RESIZABLE_VIEWPORT_BOTTOM_LINE_INVENTORY_TAB);
 
 	private static final Gson GSON = new Gson();
 
@@ -304,6 +312,11 @@ public class LavaPlugin extends Plugin
 				loadPoints();
 				updateTileCounter();
 				updateTilesDoused();
+
+				menuManager.addManagedCustomMenu(importOldOptionFixed, e -> importOldConfig());
+				menuManager.addManagedCustomMenu(importOldOptionResizable, e -> importOldConfig());
+				menuManager.addManagedCustomMenu(importOldOptionResizable2, e -> importOldConfig());
+
 				log.debug("startup");
 			}
 			catch (Throwable e)
@@ -366,6 +379,9 @@ public class LavaPlugin extends Plugin
 		menuManager.removeManagedCustomMenu(resetDouseCounterOptionFixed);
 		menuManager.removeManagedCustomMenu(resetDouseCounterOptionResizable);
 		menuManager.removeManagedCustomMenu(resetDouseCounterOptionResizable2);
+		menuManager.removeManagedCustomMenu(importOldOptionFixed);
+		menuManager.removeManagedCustomMenu(importOldOptionResizable);
+		menuManager.removeManagedCustomMenu(importOldOptionResizable2);
 	}
 
 	private void clearAllLavaTiles()
@@ -380,9 +396,7 @@ public class LavaPlugin extends Plugin
 	}
 
 	private int getPlaneIncludingBridge(WorldPoint wp) {
-//		int plane = client.getPlane(); // TODO: check if this is now broken
 		int plane = wp.getPlane();
-
 		if (wp.getX() >= 3144 && wp.getY() >= 3472 &&
 			wp.getX() <= 3183 && wp.getY() <= 3508)
 			return plane;
@@ -457,9 +471,8 @@ public class LavaPlugin extends Plugin
 
 	private String getConfigUUID() {
 		if (config.perAccountSave()) {
-			String name = client.getLocalPlayer().getName();
-			String hash = Hashing.sha256().hashString(name, StandardCharsets.UTF_8).toString();
-			log.debug("Using config hash: {}", hash, new Throwable());
+			String hash = Long.toHexString(client.getAccountHash());
+			log.debug("Using config hash: {}", hash);
 			return hash;
 		}
 		return "global";
@@ -475,6 +488,17 @@ public class LavaPlugin extends Plugin
 	private void resetDouseCounter() {
 		setTilesDoused(0);
 		tilesDoused = 0;
+	}
+
+	private void importOldConfig() {
+		String name = client.getLocalPlayer().getName();
+		if (name == null) {
+			postMessage("Failed to get the current player name.");
+			return;
+		}
+		String oldHash = Hashing.sha256().hashString(name, StandardCharsets.UTF_8).toString();
+		String newHash = Long.toHexString(client.getAccountHash());
+		copyConfig(oldHash, newHash);
 	}
 
 	private void updateTileCounter()
@@ -541,6 +565,23 @@ public class LavaPlugin extends Plugin
 
 		String json = GSON.toJson(points);
 		configManager.setConfiguration(Config.GROUP, getConfigUUID() + "." + REGION_PREFIX + regionId, json);
+	}
+
+	private void copyConfig(String fromPrefix, String toPrefix) {
+		configManager.getConfigurationKeys(Config.GROUP)
+			.stream()
+			.filter(key ->
+				key.startsWith(Config.GROUP + "." + fromPrefix + "."))
+			.forEach(fullKey -> {
+				String key = fullKey.substring(Config.GROUP.length() + 1);
+				int sepIndex = key.indexOf(".");
+				if (sepIndex == -1)
+					return;
+				String newKey = toPrefix + key.substring(sepIndex);
+				configManager.setConfiguration(Config.GROUP, newKey,
+					configManager.getConfiguration(Config.GROUP, key));
+			});
+		loadPoints();
 	}
 
 	private Collection<WorldPoint> translateToWorldPoint(Collection<LavaTile> points)
@@ -831,9 +872,7 @@ public class LavaPlugin extends Plugin
 					setTilesDoused(getTilesDoused() + 1);
 					tilesDoused++;
 				} else {
-					client.addChatMessage(ChatMessageType.GAMEMESSAGE,
-						"[The Floor is Lava]", "You have no remaining douse points left.",
-						"", false);
+					postMessage("You have no remaining douse points left.");
 					return;
 				}
 			}
@@ -842,6 +881,11 @@ public class LavaPlugin extends Plugin
 
 		savePoints(regionId, lavaTiles);
 		loadPoints();
+	}
+
+	private void postMessage(String message) {
+		client.addChatMessage(ChatMessageType.GAMEMESSAGE,
+			"[The Floor is Lava]", message, "", false);
 	}
 
 	@AllArgsConstructor
