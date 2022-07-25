@@ -67,7 +67,7 @@ public class TileCounterOverlay extends OverlayPanel
 
 		String lavaTiles = addCommasToNumber(plugin.getTotalTiles());
 		String remainingDouses = addCommasToNumber(plugin.getRemainingDousePoints());
-		String totalDouses = addCommasToNumber(config.getTilesDoused());
+		String totalDouses = addCommasToNumber(plugin.getTilesDoused());
 
 		panelComponent.getChildren().add(LineComponent.builder()
 			.left(LAVA_TILES)

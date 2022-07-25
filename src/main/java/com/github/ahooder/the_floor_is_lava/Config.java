@@ -41,6 +41,8 @@ public interface Config extends net.runelite.client.config.Config
 {
 	String GROUP = "theFloorIsLava";
 
+	String TILES_DOUSED = "tilesDoused";
+
 	@ConfigSection(
 		name = "Settings",
 		description = "Settings'",
@@ -56,11 +58,23 @@ public interface Config extends net.runelite.client.config.Config
 	String gpuSettingsSection = "gpuSettings";
 
 	@ConfigItem(
+		keyName = "perAccountSave",
+		name = "Save tiles per account",
+		section = settingsSection,
+		description = "If enabled, everything the plugin tracks will be tracked individually for each account username.",
+		position = 1
+	)
+	default boolean perAccountSave()
+	{
+		return false;
+	}
+
+	@ConfigItem(
 		keyName = "tileCounterOverlay",
 		name = "Show tile counter overlay",
 		section = settingsSection,
 		description = "Configures whether to show an overlay with the total number of lava tiles.",
-		position = 1
+		position = 2
 	)
 	default boolean tileCounterOverlay()
 	{
@@ -72,7 +86,7 @@ public interface Config extends net.runelite.client.config.Config
 		name = "Auto-mark tiles",
 		section = settingsSection,
 		description = "Automatically mark tiles as you walk.",
-		position = 2
+		position = 3
 	)
 	default boolean automarkTiles()
 	{
@@ -84,7 +98,7 @@ public interface Config extends net.runelite.client.config.Config
 		name = "Draw tiles on minimap",
 		section = settingsSection,
 		description = "Configures whether marked tiles should be drawn on minimap",
-		position = 3
+		position = 4
 	)
 	default boolean drawTilesOnMinimap()
 	{
@@ -96,7 +110,7 @@ public interface Config extends net.runelite.client.config.Config
 		name = "Draw tiles on world map",
 		section = settingsSection,
 		description = "Configures whether marked tiles should be drawn on world map",
-		position = 4
+		position = 5
 	)
 	default boolean drawTilesOnWorldMap()
 	{
@@ -105,10 +119,10 @@ public interface Config extends net.runelite.client.config.Config
 
 	@ConfigItem(
 		keyName = "showResetAllOption",
-		name = "Enable reset-all option",
+		name = "Enable reset options",
 		section = settingsSection,
-		description = "Adds a new right-click option on the inventory button for discarding all lava tiles",
-		position = 5
+		description = "Adds right-click options on the inventory button for clearing lava tiles or the douse counter",
+		position = 6
 	)
 	default boolean showResetAllOption()
 	{
@@ -281,19 +295,4 @@ public interface Config extends net.runelite.client.config.Config
 	{
 		return 60;
 	}
-
-	// Internal configs
-
-	@ConfigItem(
-		keyName = "tilesDoused",
-		hidden = true,
-		name = "Tiles doused",
-		description = "Counter for how many lava tiles have been reverted to normal tiles"
-	)
-	default int getTilesDoused()
-	{
-		return 0;
-	}
-	@ConfigItem(keyName = "tilesDoused", hidden = true, name = "", description = "")
-	void setTilesDoused(int numTiles);
 }
