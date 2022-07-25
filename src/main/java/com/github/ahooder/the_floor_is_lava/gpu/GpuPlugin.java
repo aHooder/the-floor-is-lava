@@ -26,6 +26,7 @@ package com.github.ahooder.the_floor_is_lava.gpu;
 
 import com.github.ahooder.the_floor_is_lava.Config;
 import com.github.ahooder.the_floor_is_lava.LavaPlugin;
+import com.github.ahooder.the_floor_is_lava.LavaPlugin.MarkedTile;
 import com.github.ahooder.the_floor_is_lava.gpu.config.AntiAliasingMode;
 import com.github.ahooder.the_floor_is_lava.gpu.config.UIScalingMode;
 import com.github.ahooder.the_floor_is_lava.gpu.template.Template;
@@ -46,7 +47,6 @@ import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.BufferProvider;
 import net.runelite.api.Client;
-import net.runelite.api.Constants;
 import static net.runelite.api.Constants.TILE_FLAG_BRIDGE;
 import net.runelite.api.DynamicObject;
 import net.runelite.api.GameState;
@@ -896,8 +896,11 @@ public class GpuPlugin extends Plugin implements DrawCallbacks
 	}
 
 	private boolean drawLava(int plane, int tileX, int tileY) {
-		if (!lavaPlugin.containsTile(plane, tileX, tileY))
+		MarkedTile marked = lavaPlugin.getMarkedTile(plane, tileX, tileY);
+		if (marked == null)
 			return false;
+
+		long elapsedMillis = System.currentTimeMillis() - marked.millis;
 
 		byte[][][] tileSettings = client.getTileSettings();
 		boolean isBridge = plane == 1 && (tileSettings[1][tileX][tileY] & TILE_FLAG_BRIDGE) != 0;
@@ -908,7 +911,6 @@ public class GpuPlugin extends Plugin implements DrawCallbacks
 		final int localY = tileY * Perspective.LOCAL_TILE_SIZE;
 
 		int texColor = 127; // Max brightness textured tile
-//		int textureId = 40; // Fire cape texture
 		int textureId = 31; // Lava texture
 		float textureMetadata = Float.intBitsToFloat(1);
 
@@ -917,23 +919,30 @@ public class GpuPlugin extends Plugin implements DrawCallbacks
 		int lavaSaturation = 7;
 		int topColor = JagexColor.packHSL(lavaHue, lavaSaturation, 0);
 		int botColor = JagexColor.packHSL(lavaHue, lavaSaturation, 15);
-		// 4 wall quad + 1 bottom quad = 10 triangles
+		int fallingSpeed = 128;
 
 		int faceCount = 2;
 
-		vertexBuffer.ensureCapacity(faceCount * 3 * 16);
-		uvBuffer.ensureCapacity(faceCount * 3 * 16);
+		// 8 potential wall quads + 1 bottom quad = 18 triangles
+		vertexBuffer.ensureCapacity(18 * 3 * 16);
+		uvBuffer.ensureCapacity(18 * 3 * 16);
 
 		int swtop = tileHeights[plane][tileX][tileY];
 		int setop = tileHeights[plane][tileX + 1][tileY];
 		int nwtop = tileHeights[plane][tileX][tileY + 1];
 		int netop = tileHeights[plane][tileX + 1][tileY + 1];
 
-		int minTile = Math.max(Math.max(swtop, setop), Math.max(nwtop, netop));
+		int maxHeight = Math.max(Math.max(swtop, setop), Math.max(nwtop, netop));
 
 		int lavaHeight = depth;
 		if (plane > 0)
-			lavaHeight = minTile + 32;
+			lavaHeight = maxHeight + 32;
+
+		int minHeight = lavaHeight;
+		lavaHeight = (int) Math.max(maxHeight, Math.min(minHeight, maxHeight + fallingSpeed * elapsedMillis / 1000.f));
+
+		int fade = Math.max(0, Math.min(15, (lavaHeight - maxHeight - minHeight) * 15 / (minHeight - maxHeight)));
+		int midColor = JagexColor.packHSL(lavaHue, lavaSaturation, fade);
 
 		nwtop -= lavaHeight;
 		netop -= lavaHeight;
@@ -979,8 +988,56 @@ public class GpuPlugin extends Plugin implements DrawCallbacks
 
 		// TODO: fix correct back to front ordering when compute shaders are disabled
 
+		if (lavaHeight == minHeight) {
+			lavaPlugin.recentlyMarkedTiles.removeFirstOccurrence(marked);
+		} else {
+			// Draw walls beneath while animating
+
+			minHeight -= lavaHeight;
+
+			// Add western wall
+			vertexBuffer.put(nwx, nwbot, nwy, midColor);
+			vertexBuffer.put(swx, minHeight, swy, botColor);
+			vertexBuffer.put(swx, swbot, swy, midColor);
+
+			vertexBuffer.put(swx, minHeight, swy, botColor);
+			vertexBuffer.put(nwx, nwbot, nwy, midColor);
+			vertexBuffer.put(nwx, minHeight, nwy, botColor);
+			faceCount += 2;
+
+			// Add northern wall
+			vertexBuffer.put(nex, nebot, ney, midColor);
+			vertexBuffer.put(nwx, minHeight, nwy, botColor);
+			vertexBuffer.put(nwx, nwbot, nwy, midColor);
+
+			vertexBuffer.put(nwx, minHeight, nwy, botColor);
+			vertexBuffer.put(nex, nebot, ney, midColor);
+			vertexBuffer.put(nex, minHeight, ney, botColor);
+			faceCount += 2;
+
+			// Add eastern wall
+			vertexBuffer.put(sex, sebot, sey, midColor);
+			vertexBuffer.put(nex, minHeight, ney, botColor);
+			vertexBuffer.put(nex, nebot, ney, midColor);
+
+			vertexBuffer.put(nex, minHeight, ney, botColor);
+			vertexBuffer.put(sex, sebot, sey, midColor);
+			vertexBuffer.put(sex, minHeight, sey, botColor);
+			faceCount += 2;
+
+			// Add southern wall
+			vertexBuffer.put(swx, swbot, swy, midColor);
+			vertexBuffer.put(sex, minHeight, sey, botColor);
+			vertexBuffer.put(sex, sebot, sey, midColor);
+
+			vertexBuffer.put(sex, minHeight, sey, botColor);
+			vertexBuffer.put(swx, swbot, swy, midColor);
+			vertexBuffer.put(swx, minHeight, swy, botColor);
+			faceCount += 2;
+		}
+
 		// Add western wall
-		if (!lavaPlugin.containsTile(plane, tileX - 1, tileY)) {
+		if (lavaPlugin.getMarkedTile(plane, tileX - 1, tileY) == null) {
 			vertexBuffer.put(nwx, nwtop, nwy, topColor);
 			vertexBuffer.put(swx, swtop, swy, topColor);
 			vertexBuffer.put(swx, swbot, swy, botColor);
@@ -992,7 +1049,7 @@ public class GpuPlugin extends Plugin implements DrawCallbacks
 		}
 
 		// Add northern wall
-		if (!lavaPlugin.containsTile(plane, tileX, tileY + 1)) {
+		if (lavaPlugin.getMarkedTile(plane, tileX, tileY + 1) == null) {
 			vertexBuffer.put(nex, netop, ney, topColor);
 			vertexBuffer.put(nwx, nwtop, nwy, topColor);
 			vertexBuffer.put(nwx, nwbot, nwy, botColor);
@@ -1004,7 +1061,7 @@ public class GpuPlugin extends Plugin implements DrawCallbacks
 		}
 
 		// Add eastern wall
-		if (!lavaPlugin.containsTile(plane, tileX + 1, tileY)) {
+		if (lavaPlugin.getMarkedTile(plane, tileX + 1, tileY) == null) {
 			vertexBuffer.put(sex, setop, sey, topColor);
 			vertexBuffer.put(nex, netop, ney, topColor);
 			vertexBuffer.put(nex, nebot, ney, botColor);
@@ -1016,7 +1073,7 @@ public class GpuPlugin extends Plugin implements DrawCallbacks
 		}
 
 		// Add southern wall
-		if (!lavaPlugin.containsTile(plane, tileX, tileY - 1)) {
+		if (lavaPlugin.getMarkedTile(plane, tileX, tileY - 1) == null) {
 			vertexBuffer.put(swx, swtop, swy, topColor);
 			vertexBuffer.put(sex, setop, sey, topColor);
 			vertexBuffer.put(sex, sebot, sey, botColor);
@@ -1035,8 +1092,8 @@ public class GpuPlugin extends Plugin implements DrawCallbacks
 			GpuIntBuffer b = modelBufferSmall;
 			++smallModels;
 
-			int maxHeight = Math.min(Math.min(swtop, setop), Math.min(nwtop, netop));
-			int radius = (int) Math.sqrt(maxHeight * maxHeight + 32768);
+			int relMaxHeight = Math.min(Math.min(swtop, setop), Math.min(nwtop, netop));
+			int radius = (int) Math.sqrt(relMaxHeight * relMaxHeight + 32768);
 
 			b.ensureCapacity(8);
 			IntBuffer buffer = b.getBuffer();
