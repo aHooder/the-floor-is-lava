@@ -180,10 +180,12 @@ public class LavaPlugin extends Plugin
 	}
 
 	private final MovementFlag[] fullBlock = new MovementFlag[]
-		{MovementFlag.BLOCK_MOVEMENT_FLOOR,
+		{
+			MovementFlag.BLOCK_MOVEMENT_FLOOR,
 			MovementFlag.BLOCK_MOVEMENT_FLOOR_DECORATION,
 			MovementFlag.BLOCK_MOVEMENT_OBJECT,
-			MovementFlag.BLOCK_MOVEMENT_FULL};
+			MovementFlag.BLOCK_MOVEMENT_FULL
+		};
 
 	private final MovementFlag[] allDirections = new MovementFlag[]
 		{
